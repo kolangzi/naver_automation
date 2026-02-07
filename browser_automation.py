@@ -89,20 +89,91 @@ class NaverNeighborBot:
                 return match.group(1), match.group(2)
         return None, None
 
-    async def extract_like_accounts(self, blog_url: str) -> List[dict]:
+    async def click_sympathy(self, blog_url: str) -> bool:
+        try:
+            self.log(f"공감 클릭을 위해 글 페이지 이동: {blog_url}")
+            await self.page.goto(blog_url)
+            await HumanDelay.page_load()
+            await asyncio.sleep(3)
+
+            main_frame = self._get_main_frame()
+            if not main_frame:
+                self.log("공감 클릭 실패: mainFrame을 찾지 못함")
+                return False
+
+            await main_frame.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+            await asyncio.sleep(1)
+
+            like_face_btn = await main_frame.query_selector('.my_reaction a.u_likeit_button._face')
+            if not like_face_btn:
+                self.log("공감 버튼을 찾지 못함")
+                return False
+
+            btn_class = await like_face_btn.get_attribute('class') or ''
+            if ' on' in btn_class or btn_class.endswith(' on'):
+                self.log("이미 공감한 글입니다 - 스킵")
+                return True
+
+            self.log("공감 버튼 클릭 중...")
+            await like_face_btn.evaluate('el => el.click()')
+            await asyncio.sleep(1)
+
+            like_btn = await main_frame.query_selector('.my_reaction a.u_likeit_list_button._button[data-type="like"]')
+            if not like_btn:
+                self.log("공감(하트) 옵션을 찾지 못함")
+                return False
+
+            aria_pressed = await like_btn.get_attribute('aria-pressed')
+            if aria_pressed == 'true':
+                self.log("이미 공감한 글입니다 - 스킵")
+                return True
+
+            await like_btn.evaluate('el => el.click()')
+            await asyncio.sleep(2)
+
+            self.log("공감 클릭 완료!")
+            return True
+
+        except Exception as e:
+            self.log(f"공감 클릭 오류: {str(e)[:80]}")
+            return False
+
+    MAX_SUCCESS = 100
+
+    async def _init_sympathy_page(self, blog_url: str) -> bool:
         blog_id, log_no = self._parse_blog_url(blog_url)
         if not blog_id or not log_no:
             self.log(f"URL 파싱 실패: {blog_url}")
-            return []
+            return False
 
         self.sympathy_url = f"https://blog.naver.com/SympathyHistoryList.naver?blogId={blog_id}&logNo={log_no}&categoryId=3"
         self.log(f"공감 목록 페이지 접속: {self.sympathy_url}")
         
         await self.page.goto(self.sympathy_url)
         await HumanDelay.page_load()
-        await asyncio.sleep(2)
+        await asyncio.sleep(5)
+        return True
 
-        return await self._get_available_accounts()
+    async def _load_next_page(self) -> bool:
+        next_btn = await self.page.query_selector('#_loadNext')
+        if not next_btn:
+            return False
+        is_visible = await next_btn.evaluate('el => el.offsetParent !== null')
+        if not is_visible:
+            return False
+        await next_btn.evaluate('el => el.click()')
+        await HumanDelay.page_load()
+        await asyncio.sleep(2)
+        return True
+
+    async def _restore_page_depth(self, depth: int) -> int:
+        restored = 0
+        for _ in range(depth):
+            if await self._load_next_page():
+                restored += 1
+            else:
+                break
+        return restored
 
     async def _get_available_accounts(self) -> List[dict]:
         accounts = []
@@ -257,7 +328,7 @@ class NaverNeighborBot:
         if self.sympathy_url:
             await self.page.goto(self.sympathy_url)
             await HumanDelay.page_load()
-            await asyncio.sleep(1)
+            await asyncio.sleep(5)
 
     def _get_main_frame(self):
         for f in self.page.frames:
@@ -415,43 +486,72 @@ class NaverNeighborBot:
                     if not await self.check_login_status():
                         raise Exception("로그인 실패")
 
-            accounts = await self.extract_like_accounts(blog_url)
+            await self.click_sympathy(blog_url)
 
-            if not accounts:
-                self.log("이웃추가 가능한 계정이 없습니다.")
+            if not await self._init_sympathy_page(blog_url):
+                self.log("공감 목록 페이지 접속 실패")
                 return
 
-            total = len(accounts)
             success_count = 0
-            comment_count = 0
-            self.log(f"이웃추가 가능 계정 {total}개 발견")
-
-            for i, account in enumerate(accounts):
-                if not self.is_running:
-                    self.log("사용자에 의해 중단됨")
-                    break
-
-                self.log(f"  [{i+1}/{total}] {account['name']} ({account['user_id']})")
-
+            attempted_ids: set = set()
+            page_depth = 0
             succeeded_accounts = []
+            comment_count = 0
+            total_attempted = 0
 
-            for i, account in enumerate(accounts):
-                if not self.is_running:
-                    self.log("사용자에 의해 중단됨")
+            self.log(f"서로이웃 신청 시작 (최대 {self.MAX_SUCCESS}명)")
+
+            while success_count < self.MAX_SUCCESS and self.is_running:
+                accounts = await self._get_available_accounts()
+                new_accounts = [a for a in accounts if a['user_id'] not in attempted_ids]
+
+                if not new_accounts:
+                    self.log(f"현재 페이지(depth={page_depth})에 새 계정 없음, 다음 페이지 시도...")
+                    if not await self._load_next_page():
+                        self.log("더 이상 페이지가 없습니다.")
+                        break
+                    page_depth += 1
+                    continue
+
+                self.log(f"페이지(depth={page_depth}): 신규 계정 {len(new_accounts)}개 발견")
+
+                for account in new_accounts:
+                    if success_count >= self.MAX_SUCCESS:
+                        self.log(f"최대 성공 수 {self.MAX_SUCCESS}명 도달 - 신청 종료")
+                        break
+                    if not self.is_running:
+                        self.log("사용자에 의해 중단됨")
+                        break
+
+                    attempted_ids.add(account['user_id'])
+                    total_attempted += 1
+
+                    self.log(f"  [{success_count+1}/{self.MAX_SUCCESS}] {account['name']} ({account['user_id']})")
+
+                    if await self.request_neighbor(account, neighbor_message):
+                        success_count += 1
+                        succeeded_accounts.append(account)
+
+                    if progress_callback:
+                        progress_callback(success_count, self.MAX_SUCCESS)
+
+                    await HumanDelay.between_requests()
+
+                    await self._reload_sympathy_page()
+                    restored = await self._restore_page_depth(page_depth)
+                    if restored < page_depth:
+                        self.log(f"페이지 depth 복원 불완전 ({restored}/{page_depth}), 현재 depth로 조정")
+                        page_depth = restored
+
+                if not self.is_running or success_count >= self.MAX_SUCCESS:
                     break
 
-                if await self.request_neighbor(account, neighbor_message):
-                    success_count += 1
-                    succeeded_accounts.append(account)
+                if not await self._load_next_page():
+                    self.log("더 이상 페이지가 없습니다.")
+                    break
+                page_depth += 1
 
-                if progress_callback:
-                    progress_callback(i + 1, total)
-
-                if i < total - 1:
-                    await HumanDelay.between_requests()
-                    await self._reload_sympathy_page()
-
-            self.log(f"서로이웃 신청 완료! {total}개 중 {success_count}개 성공")
+            self.log(f"서로이웃 신청 완료! 시도 {total_attempted}명, 성공 {success_count}명")
 
             if enable_comment and succeeded_accounts:
                 self.log(f"성공한 {len(succeeded_accounts)}개 계정에 댓글 작성 시작...")
