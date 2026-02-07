@@ -10,8 +10,8 @@ class NaverNeighborApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("네이버 서로이웃 자동 신청")
-        self.geometry("600x700")
+        self.title("소현이의 서로이웃 자동 신청 후후")
+        self.geometry("600x800")
         self.resizable(False, False)
 
         self.bot = None
@@ -22,7 +22,7 @@ class NaverNeighborApp(ctk.CTk):
     def _create_widgets(self):
         # 제목
         title_label = ctk.CTkLabel(
-            self, text="네이버 서로이웃 자동 신청",
+            self, text="소현이의 서로이웃 자동 신청 후후",
             font=ctk.CTkFont(size=24, weight="bold")
         )
         title_label.pack(pady=20)
@@ -40,7 +40,7 @@ class NaverNeighborApp(ctk.CTk):
         # 네이버 ID
         id_label = ctk.CTkLabel(input_frame, text="네이버 ID:")
         id_label.grid(row=1, column=0, padx=10, pady=10, sticky="w")
-        self.id_entry = ctk.CTkEntry(input_frame, width=400, placeholder_text="아이디 입력")
+        self.id_entry = ctk.CTkEntry(input_frame, width=400, placeholder_text="lizidemarron")
         self.id_entry.grid(row=1, column=1, padx=10, pady=10)
 
         # 비밀번호
@@ -48,6 +48,33 @@ class NaverNeighborApp(ctk.CTk):
         pw_label.grid(row=2, column=0, padx=10, pady=10, sticky="w")
         self.pw_entry = ctk.CTkEntry(input_frame, width=400, placeholder_text="비밀번호 입력", show="*")
         self.pw_entry.grid(row=2, column=1, padx=10, pady=10)
+
+        comment_frame = ctk.CTkFrame(self)
+        comment_frame.pack(padx=20, pady=10, fill="x")
+
+        self.comment_toggle_var = ctk.BooleanVar(value=True)
+        self.comment_toggle = ctk.CTkSwitch(
+            comment_frame, text="서로이웃 신청 성공 시 최신글에 댓글 남기기",
+            variable=self.comment_toggle_var,
+            command=self._on_comment_toggle
+        )
+        self.comment_toggle.grid(row=0, column=0, columnspan=2, padx=10, pady=10, sticky="w")
+
+        comment_text_label = ctk.CTkLabel(comment_frame, text="댓글 내용:")
+        comment_text_label.grid(row=1, column=0, padx=10, pady=10, sticky="w")
+        self.comment_entry = ctk.CTkEntry(
+            comment_frame, width=400,
+            placeholder_text="안녕하세요! 글 잘 봤습니다 :)"
+        )
+        self.comment_entry.grid(row=1, column=1, padx=10, pady=10)
+
+        api_key_label = ctk.CTkLabel(comment_frame, text="Gemini API 키:")
+        api_key_label.grid(row=2, column=0, padx=10, pady=10, sticky="w")
+        self.api_key_entry = ctk.CTkEntry(
+            comment_frame, width=400,
+            placeholder_text="비워두면 고정 댓글 사용"
+        )
+        self.api_key_entry.grid(row=2, column=1, padx=10, pady=10)
 
         # 버튼 프레임
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
@@ -91,13 +118,23 @@ class NaverNeighborApp(ctk.CTk):
         self.progress_label.configure(text=f"진행 중: {current}/{total}")
         self.progress_bar.set(current / total)
 
-    def _on_start(self):
-        """시작 버튼 클릭"""
-        blog_url = self.url_entry.get().strip()
-        user_id = self.id_entry.get().strip()
-        password = self.pw_entry.get()
+    def _on_comment_toggle(self):
+        if self.comment_toggle_var.get():
+            self.comment_entry.configure(state="normal")
+            self.api_key_entry.configure(state="normal")
+        else:
+            self.comment_entry.configure(state="disabled")
+            self.api_key_entry.configure(state="disabled")
 
-        if not blog_url or not user_id or not password:
+    def _on_start(self):
+        blog_url = self.url_entry.get().strip()
+        user_id = self.id_entry.get().strip() or "lizidemarron"
+        password = self.pw_entry.get()
+        enable_comment = self.comment_toggle_var.get()
+        comment_text = self.comment_entry.get().strip() or "안녕하세요! 글 잘 봤습니다 :)"
+        gemini_api_key = self.api_key_entry.get().strip()
+
+        if not blog_url or not password:
             self._log("모든 필드를 입력해주세요!")
             return
 
@@ -105,16 +142,15 @@ class NaverNeighborApp(ctk.CTk):
         self.start_btn.configure(state="disabled")
         self.stop_btn.configure(state="normal")
 
-        # 별도 스레드에서 실행
         thread = threading.Thread(
             target=self._run_bot,
-            args=(blog_url, user_id, password)
+            args=(blog_url, user_id, password, enable_comment, comment_text, gemini_api_key)
         )
         thread.daemon = True
         thread.start()
 
-    def _run_bot(self, blog_url: str, user_id: str, password: str):
-        """봇 실행 (별도 스레드)"""
+    def _run_bot(self, blog_url: str, user_id: str, password: str,
+                 enable_comment: bool, comment_text: str, gemini_api_key: str):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
@@ -126,7 +162,10 @@ class NaverNeighborApp(ctk.CTk):
             loop.run_until_complete(
                 self.bot.run(
                     blog_url, user_id, password,
-                    progress_callback=lambda c, t: self.after(0, self._update_progress, c, t)
+                    progress_callback=lambda c, t: self.after(0, self._update_progress, c, t),
+                    enable_comment=enable_comment,
+                    comment_text=comment_text,
+                    gemini_api_key=gemini_api_key
                 )
             )
         finally:
