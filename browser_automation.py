@@ -149,7 +149,7 @@ class NaverNeighborBot:
                 return btn
         return None
 
-    async def request_neighbor(self, account: dict) -> bool:
+    async def request_neighbor(self, account: dict, neighbor_message: str = "블로그 글 잘 봤습니다. 서로이웃 신청드려요!") -> bool:
         try:
             name = account['name']
             user_id = account['user_id']
@@ -216,7 +216,7 @@ class NaverNeighborBot:
 
             message_input = await popup.query_selector('textarea')
             if message_input:
-                await message_input.fill('블로그 글 잘 봤습니다. 서로이웃 신청드려요!')
+                await message_input.fill(neighbor_message)
                 self.log(f"[{name}] 메시지 입력 완료")
                 await asyncio.sleep(0.5)
 
@@ -394,7 +394,8 @@ class NaverNeighborBot:
     async def run(self, blog_url: str, user_id: str, password: str,
                   progress_callback: Callable[[int, int], None] = None,
                   enable_comment: bool = True, comment_text: str = "안녕하세요! 글 잘 봤습니다 :)",
-                  gemini_api_key: str = ""):
+                  gemini_api_key: str = "",
+                  neighbor_message: str = "블로그 글 잘 봤습니다. 서로이웃 신청드려요!"):
         self.is_running = True
         ai_generator = None
         if enable_comment and gemini_api_key:
@@ -439,7 +440,7 @@ class NaverNeighborBot:
                     self.log("사용자에 의해 중단됨")
                     break
 
-                if await self.request_neighbor(account):
+                if await self.request_neighbor(account, neighbor_message):
                     success_count += 1
                     succeeded_accounts.append(account)
 

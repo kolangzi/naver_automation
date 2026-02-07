@@ -11,7 +11,7 @@ class NaverNeighborApp(ctk.CTk):
         super().__init__()
 
         self.title("소현이의 서로이웃 자동 신청 후후")
-        self.geometry("600x800")
+        self.geometry("600x850")
         self.resizable(False, False)
 
         self.bot = None
@@ -48,6 +48,14 @@ class NaverNeighborApp(ctk.CTk):
         pw_label.grid(row=2, column=0, padx=10, pady=10, sticky="w")
         self.pw_entry = ctk.CTkEntry(input_frame, width=400, placeholder_text="비밀번호 입력", show="*")
         self.pw_entry.grid(row=2, column=1, padx=10, pady=10)
+
+        neighbor_msg_label = ctk.CTkLabel(input_frame, text="신청 메시지:")
+        neighbor_msg_label.grid(row=3, column=0, padx=10, pady=10, sticky="w")
+        self.neighbor_msg_entry = ctk.CTkEntry(
+            input_frame, width=400,
+            placeholder_text="블로그 글 잘 봤습니다. 서로이웃 신청드려요!"
+        )
+        self.neighbor_msg_entry.grid(row=3, column=1, padx=10, pady=10)
 
         comment_frame = ctk.CTkFrame(self)
         comment_frame.pack(padx=20, pady=10, fill="x")
@@ -133,6 +141,7 @@ class NaverNeighborApp(ctk.CTk):
         enable_comment = self.comment_toggle_var.get()
         comment_text = self.comment_entry.get().strip() or "안녕하세요! 글 잘 봤습니다 :)"
         gemini_api_key = self.api_key_entry.get().strip()
+        neighbor_message = self.neighbor_msg_entry.get().strip() or "블로그 글 잘 봤습니다. 서로이웃 신청드려요!"
 
         if not blog_url or not password:
             self._log("모든 필드를 입력해주세요!")
@@ -144,13 +153,14 @@ class NaverNeighborApp(ctk.CTk):
 
         thread = threading.Thread(
             target=self._run_bot,
-            args=(blog_url, user_id, password, enable_comment, comment_text, gemini_api_key)
+            args=(blog_url, user_id, password, enable_comment, comment_text, gemini_api_key, neighbor_message)
         )
         thread.daemon = True
         thread.start()
 
     def _run_bot(self, blog_url: str, user_id: str, password: str,
-                 enable_comment: bool, comment_text: str, gemini_api_key: str):
+                 enable_comment: bool, comment_text: str, gemini_api_key: str,
+                 neighbor_message: str):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
@@ -165,7 +175,8 @@ class NaverNeighborApp(ctk.CTk):
                     progress_callback=lambda c, t: self.after(0, self._update_progress, c, t),
                     enable_comment=enable_comment,
                     comment_text=comment_text,
-                    gemini_api_key=gemini_api_key
+                    gemini_api_key=gemini_api_key,
+                    neighbor_message=neighbor_message
                 )
             )
         finally:
