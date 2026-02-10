@@ -330,6 +330,41 @@ class NaverNeighborBot:
             await HumanDelay.page_load()
             await asyncio.sleep(5)
 
+    async def _click_sympathy_on_frame(self, main_frame) -> bool:
+        try:
+            like_face_btn = await main_frame.query_selector('.my_reaction a.u_likeit_button._face')
+            if not like_face_btn:
+                self.log("  공감 버튼을 찾지 못함 - 스킵")
+                return False
+
+            btn_class = await like_face_btn.get_attribute('class') or ''
+            if ' on' in btn_class or btn_class.endswith(' on'):
+                self.log("  이미 공감한 글 - 스킵")
+                return True
+
+            await like_face_btn.evaluate('el => el.click()')
+            await asyncio.sleep(1)
+
+            like_btn = await main_frame.query_selector('.my_reaction a.u_likeit_list_button._button[data-type="like"]')
+            if not like_btn:
+                self.log("  공감(하트) 옵션을 찾지 못함 - 스킵")
+                return False
+
+            aria_pressed = await like_btn.get_attribute('aria-pressed')
+            if aria_pressed == 'true':
+                self.log("  이미 공감한 글 - 스킵")
+                return True
+
+            await like_btn.evaluate('el => el.click()')
+            await asyncio.sleep(2)
+
+            self.log("  공감 클릭 완료!")
+            return True
+
+        except Exception as e:
+            self.log(f"  공감 클릭 오류: {str(e)[:80]}")
+            return False
+
     def _get_main_frame(self):
         for f in self.page.frames:
             if 'PostView' in f.url:
@@ -877,6 +912,8 @@ class NaverNeighborBot:
                 await asyncio.sleep(1)
                 await main_frame.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                 await asyncio.sleep(2)
+
+                await self._click_sympathy_on_frame(main_frame)
 
                 already = await self._check_my_comment_exists(main_frame, blog_id)
                 if already:
