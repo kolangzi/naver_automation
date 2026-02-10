@@ -1,6 +1,7 @@
 import customtkinter as ctk
 import asyncio
 import threading
+from datetime import date
 from browser_automation import NaverNeighborBot
 
 ctk.set_appearance_mode("dark")
@@ -149,8 +150,14 @@ class NaverNeighborApp(ctk.CTk):
         self.t2_group_entry = ctk.CTkEntry(input_frame, width=380, placeholder_text="이웃1")
         self.t2_group_entry.grid(row=3, column=1, padx=10, pady=8)
 
+        date_label = ctk.CTkLabel(input_frame, text="기준 날짜:")
+        date_label.grid(row=4, column=0, padx=10, pady=8, sticky="w")
+        self.t2_date_entry = ctk.CTkEntry(input_frame, width=380, placeholder_text="YYYY-MM-DD")
+        self.t2_date_entry.insert(0, date.today().strftime("%Y-%m-%d"))
+        self.t2_date_entry.grid(row=4, column=1, padx=10, pady=8)
+
         desc_label = ctk.CTkLabel(
-            tab, text="오늘 글을 올린 서로이웃의 최신글에 AI 댓글을 남깁니다.",
+            tab, text="기준 날짜 이후 글을 올린 서로이웃의 최신글에 AI 댓글을 남깁니다.",
             font=ctk.CTkFont(size=12),
             text_color="gray"
         )
@@ -228,6 +235,7 @@ class NaverNeighborApp(ctk.CTk):
         password = self.t2_pw_entry.get()
         gemini_api_key = self.t2_api_key_entry.get().strip()
         group_name = self.t2_group_entry.get().strip() or "이웃1"
+        cutoff_date = self.t2_date_entry.get().strip() or date.today().strftime("%Y-%m-%d")
 
         if not password:
             self._log("비밀번호를 입력해주세요!")
@@ -241,7 +249,7 @@ class NaverNeighborApp(ctk.CTk):
 
         thread = threading.Thread(
             target=self._run_buddy_comment_bot,
-            args=(user_id, password, gemini_api_key, group_name)
+            args=(user_id, password, gemini_api_key, group_name, cutoff_date)
         )
         thread.daemon = True
         thread.start()
@@ -272,7 +280,8 @@ class NaverNeighborApp(ctk.CTk):
             self.after(0, self._on_complete)
 
     def _run_buddy_comment_bot(self, user_id: str, password: str,
-                                gemini_api_key: str, group_name: str):
+                                gemini_api_key: str, group_name: str,
+                                cutoff_date: str):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
@@ -286,6 +295,7 @@ class NaverNeighborApp(ctk.CTk):
                     user_id, password,
                     gemini_api_key=gemini_api_key,
                     group_name=group_name,
+                    cutoff_date=cutoff_date,
                     progress_callback=lambda c, t: self.after(0, self._update_progress, c, t),
                 )
             )

@@ -750,6 +750,7 @@ class NaverNeighborBot:
     async def run_buddy_comment(self, user_id: str, password: str,
                                 gemini_api_key: str = "",
                                 group_name: str = "이웃1",
+                                cutoff_date: str = "",
                                 progress_callback: Callable[[int, int], None] = None):
         """기능 2: 서로이웃 관리 페이지에서 이웃 수집 → 최신글에 댓글 작성"""
         self.is_running = True
@@ -759,7 +760,8 @@ class NaverNeighborBot:
             self.log("AI 댓글 생성 모드 (Gemini)")
 
         from datetime import date
-        cutoff_date = date.today().strftime("%Y-%m-%d")
+        if not cutoff_date:
+            cutoff_date = date.today().strftime("%Y-%m-%d")
 
         try:
             await self.start_browser()
