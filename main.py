@@ -89,21 +89,13 @@ class NaverNeighborApp(ctk.CTk):
         )
         self.comment_toggle.grid(row=0, column=0, columnspan=2, padx=10, pady=8, sticky="w")
 
-        comment_text_label = ctk.CTkLabel(comment_frame, text="댓글 내용:")
-        comment_text_label.grid(row=1, column=0, padx=10, pady=8, sticky="w")
-        self.comment_entry = ctk.CTkEntry(
-            comment_frame, width=380,
-            placeholder_text="안녕하세요! 글 잘 봤습니다 :)"
-        )
-        self.comment_entry.grid(row=1, column=1, padx=10, pady=8)
-
         api_key_label = ctk.CTkLabel(comment_frame, text="Gemini API 키:")
-        api_key_label.grid(row=2, column=0, padx=10, pady=8, sticky="w")
+        api_key_label.grid(row=1, column=0, padx=10, pady=8, sticky="w")
         self.api_key_entry = ctk.CTkEntry(
             comment_frame, width=380,
             placeholder_text="Gemini API 키 입력 (필수)"
         )
-        self.api_key_entry.grid(row=2, column=1, padx=10, pady=8)
+        self.api_key_entry.grid(row=1, column=1, padx=10, pady=8)
 
         btn_frame = ctk.CTkFrame(tab, fg_color="transparent")
         btn_frame.pack(pady=10)
@@ -189,10 +181,8 @@ class NaverNeighborApp(ctk.CTk):
 
     def _on_comment_toggle(self):
         if self.comment_toggle_var.get():
-            self.comment_entry.configure(state="normal")
             self.api_key_entry.configure(state="normal")
         else:
-            self.comment_entry.configure(state="disabled")
             self.api_key_entry.configure(state="disabled")
 
     def _set_running(self, running: bool):
@@ -209,7 +199,6 @@ class NaverNeighborApp(ctk.CTk):
         user_id = self.id_entry.get().strip() or "lizidemarron"
         password = self.pw_entry.get()
         enable_comment = self.comment_toggle_var.get()
-        comment_text = self.comment_entry.get().strip() or "안녕하세요! 글 잘 봤습니다 :)"
         gemini_api_key = self.api_key_entry.get().strip()
         neighbor_message = self.neighbor_msg_entry.get().strip() or "블로그 글 잘 봤습니다. 서로이웃 신청드려요!"
 
@@ -225,7 +214,7 @@ class NaverNeighborApp(ctk.CTk):
 
         thread = threading.Thread(
             target=self._run_bot,
-            args=(blog_url, user_id, password, enable_comment, comment_text, gemini_api_key, neighbor_message)
+            args=(blog_url, user_id, password, enable_comment, gemini_api_key, neighbor_message)
         )
         thread.daemon = True
         thread.start()
@@ -255,7 +244,7 @@ class NaverNeighborApp(ctk.CTk):
         thread.start()
 
     def _run_bot(self, blog_url: str, user_id: str, password: str,
-                 enable_comment: bool, comment_text: str, gemini_api_key: str,
+                 enable_comment: bool, gemini_api_key: str,
                  neighbor_message: str):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -270,7 +259,6 @@ class NaverNeighborApp(ctk.CTk):
                     blog_url, user_id, password,
                     progress_callback=lambda c, t: self.after(0, self._update_progress, c, t),
                     enable_comment=enable_comment,
-                    comment_text=comment_text,
                     gemini_api_key=gemini_api_key,
                     neighbor_message=neighbor_message
                 )

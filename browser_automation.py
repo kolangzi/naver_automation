@@ -464,7 +464,7 @@ class NaverNeighborBot:
 
     async def run(self, blog_url: str, user_id: str, password: str,
                   progress_callback: Callable[[int, int], None] = None,
-                  enable_comment: bool = True, comment_text: str = "안녕하세요! 글 잘 봤습니다 :)",
+                  enable_comment: bool = True,
                   gemini_api_key: str = "",
                   neighbor_message: str = "블로그 글 잘 봤습니다. 서로이웃 신청드려요!"):
         self.is_running = True
