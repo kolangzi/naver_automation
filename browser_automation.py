@@ -21,6 +21,7 @@ class NaverNeighborBot:
             args=[
                 '--disable-blink-features=AutomationControlled',
                 '--no-sandbox',
+                '--disable-accelerator-table',
             ]
         )
         context = await self.browser.new_context(
@@ -32,6 +33,10 @@ class NaverNeighborBot:
         await self.page.add_init_script("""
             Object.defineProperty(navigator, 'webdriver', {
                 get: () => undefined
+            });
+            window.addEventListener('beforeunload', function(e) {
+                e.preventDefault();
+                e.returnValue = '';
             });
         """)
         self.log("브라우저 시작됨")
