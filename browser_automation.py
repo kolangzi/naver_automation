@@ -138,8 +138,6 @@ class NaverNeighborBot:
             self.log(f"공감 클릭 오류: {str(e)[:80]}")
             return False
 
-    MAX_SUCCESS = 100
-
     async def _init_sympathy_page(self, blog_url: str) -> bool:
         blog_id, log_no = self._parse_blog_url(blog_url)
         if not blog_id or not log_no:
@@ -499,14 +497,9 @@ class NaverNeighborBot:
 
     async def run(self, blog_url: str, user_id: str, password: str,
                   progress_callback: Callable[[int, int], None] = None,
-                  enable_comment: bool = True,
-                  gemini_api_key: str = "",
-                  neighbor_message: str = "블로그 글 잘 봤습니다. 서로이웃 신청드려요!"):
+                  neighbor_message: str = "블로그 글 잘 봤습니다. 서로이웃 신청드려요!",
+                  max_success: int = 100):
         self.is_running = True
-        ai_generator = None
-        if enable_comment and gemini_api_key:
-            ai_generator = CommentGenerator(gemini_api_key)
-            self.log("AI 댓글 생성 모드 (Gemini 2.5 Flash)")
 
         try:
             await self.start_browser()
@@ -528,13 +521,11 @@ class NaverNeighborBot:
             success_count = 0
             attempted_ids: set = set()
             page_depth = 0
-            succeeded_accounts = []
-            comment_count = 0
             total_attempted = 0
 
-            self.log(f"서로이웃 신청 시작 (최대 {self.MAX_SUCCESS}명)")
+            self.log(f"서로이웃 신청 시작 (최대 {max_success}명)")
 
-            while success_count < self.MAX_SUCCESS and self.is_running:
+            while success_count < max_success and self.is_running:
                 accounts = await self._get_available_accounts()
                 new_accounts = [a for a in accounts if a['user_id'] not in attempted_ids]
 
@@ -549,8 +540,8 @@ class NaverNeighborBot:
                 self.log(f"페이지(depth={page_depth}): 신규 계정 {len(new_accounts)}개 발견")
 
                 for account in new_accounts:
-                    if success_count >= self.MAX_SUCCESS:
-                        self.log(f"최대 성공 수 {self.MAX_SUCCESS}명 도달 - 신청 종료")
+                    if success_count >= max_success:
+                        self.log(f"최대 성공 수 {max_success}명 도달 - 신청 종료")
                         break
                     if not self.is_running:
                         self.log("사용자에 의해 중단됨")
@@ -559,14 +550,13 @@ class NaverNeighborBot:
                     attempted_ids.add(account['user_id'])
                     total_attempted += 1
 
-                    self.log(f"  [{success_count+1}/{self.MAX_SUCCESS}] {account['name']} ({account['user_id']})")
+                    self.log(f"  [{success_count+1}/{max_success}] {account['name']} ({account['user_id']})")
 
                     if await self.request_neighbor(account, neighbor_message):
                         success_count += 1
-                        succeeded_accounts.append(account)
 
                     if progress_callback:
-                        progress_callback(success_count, self.MAX_SUCCESS)
+                        progress_callback(success_count, max_success)
 
                     await HumanDelay.between_requests()
 
@@ -576,7 +566,7 @@ class NaverNeighborBot:
                         self.log(f"페이지 depth 복원 불완전 ({restored}/{page_depth}), 현재 depth로 조정")
                         page_depth = restored
 
-                if not self.is_running or success_count >= self.MAX_SUCCESS:
+                if not self.is_running or success_count >= max_success:
                     break
 
                 if not await self._load_next_page():
@@ -585,51 +575,6 @@ class NaverNeighborBot:
                 page_depth += 1
 
             self.log(f"서로이웃 신청 완료! 시도 {total_attempted}명, 성공 {success_count}명")
-
-            if enable_comment and succeeded_accounts:
-                comment_total = len(succeeded_accounts)
-                self.log(f"성공한 {comment_total}개 계정에 댓글 작성 시작...")
-                if progress_callback:
-                    progress_callback(0, comment_total)
-
-                for ci, account in enumerate(succeeded_accounts):
-                    if not self.is_running:
-                        self.log("사용자에 의해 중단됨")
-                        break
-
-                    target_id = account['user_id']
-                    name = account['name']
-                    self.log(f"\n[댓글 {ci+1}/{comment_total}] {name} ({target_id})")
-                    try:
-                        log_no = await self.get_latest_post_log_no(target_id)
-                        if not log_no:
-                            self.log(f"[{name}] 최신글을 찾지 못함 - 댓글 스킵")
-                            if progress_callback:
-                                progress_callback(ci + 1, comment_total)
-                            continue
-
-                        final_comment = None
-                        if ai_generator:
-                            content = await self.get_post_content(target_id, log_no)
-                            generated = ai_generator.generate(content['title'], content['body'])
-                            if generated:
-                                final_comment = generated
-                                self.log(f"[{name}] AI 댓글 생성: '{final_comment[:40]}'")
-                            else:
-                                self.log(f"[{name}] AI 댓글 생성 3회 시도 모두 실패")
-                                self.log("AI 모델이 정상 동작하지 않습니다. 작업을 종료합니다.")
-                                return
-
-                        if final_comment and await self.write_comment(target_id, log_no, final_comment):
-                            comment_count += 1
-                    except Exception as e:
-                        self.log(f"[{name}] 댓글 오류: {str(e)[:50]}")
-
-                    if progress_callback:
-                        progress_callback(ci + 1, comment_total)
-                    await HumanDelay.between_requests()
-
-                self.log(f"댓글 {comment_count}개 작성 완료")
 
         except Exception as e:
             self.log(f"실행 오류: {str(e)}")
@@ -677,8 +622,8 @@ class NaverNeighborBot:
         self.log(f"  '{group_name}' 못 찾음")
         return False
 
-    async def _change_sort_to_update(self, frame) -> bool:
-        self.log("정렬 → 업데이트순")
+    async def _change_sort_order(self, frame, sort_order: str = "업데이트순") -> bool:
+        self.log(f"정렬 → {sort_order}")
         sort_box = await frame.query_selector("#buddysel_order .selectbox-box")
         if not sort_box:
             self.log("  정렬 드롭다운 못 찾음")
@@ -686,25 +631,31 @@ class NaverNeighborBot:
         current_label = await frame.query_selector("#buddysel_order .selectbox-label")
         if current_label:
             current_text = (await current_label.inner_text()).strip()
-            if "업데이트" in current_text:
+            if sort_order == "업데이트순" and "업데이트" in current_text:
                 self.log("  이미 업데이트순")
+                return True
+            if sort_order == "이웃추가순" and "이웃추가" in current_text:
+                self.log("  이미 이웃추가순")
                 return True
         await sort_box.click()
         await asyncio.sleep(1)
         items = await frame.query_selector_all("#buddysel_order .selectbox-list li")
+        target_keyword = "업데이트" if sort_order == "업데이트순" else "이웃추가"
         for item in items:
             text = (await item.inner_text()).strip()
-            if "업데이트" in text:
+            if target_keyword in text:
                 await item.click()
-                self.log("  '업데이트순' 선택 완료")
+                self.log(f"  '{sort_order}' 선택 완료")
                 await asyncio.sleep(3)
                 return True
-        self.log("  '업데이트순' 못 찾음")
+        self.log(f"  '{sort_order}' 못 찾음")
         return False
 
-    async def _extract_buddy_list(self, frame) -> list:
+    async def _extract_buddy_list(self, frame, sort_order: str = "업데이트순") -> list:
         rows = await frame.query_selector_all("table.tbl_buddymanage tbody tr")
         buddies = []
+        # 업데이트순 → tds[5] (최근 글), 이웃추가순 → tds[6] (이웃추가일)
+        date_col_index = 5 if sort_order == "업데이트순" else 6
         for row in rows:
             try:
                 tds = await row.query_selector_all("td")
@@ -722,14 +673,14 @@ class NaverNeighborBot:
                 nick = blog_id
                 if nick_el:
                     nick = (await nick_el.inner_text()).strip()
-                recent_post_td = tds[5]
-                recent_post_text = (await recent_post_td.inner_text()).strip()
-                update_date = self._parse_naver_date(recent_post_text)
+                date_td = tds[date_col_index]
+                date_text = (await date_td.inner_text()).strip()
+                parsed_date = self._parse_naver_date(date_text)
                 buddies.append({
                     "blog_id": blog_id,
                     "nick": nick,
-                    "update_date": update_date,
-                    "raw_date": recent_post_text,
+                    "update_date": parsed_date,
+                    "raw_date": date_text,
                 })
             except:
                 continue
@@ -763,6 +714,13 @@ class NaverNeighborBot:
         return False
 
     async def _check_my_comment_exists(self, main_frame, my_blog_id: str) -> bool:
+        existing_nicks = await main_frame.query_selector_all(".u_cbox_nick")
+        if not existing_nicks:
+            comment_btn = await main_frame.query_selector("a._cmtList")
+            if comment_btn:
+                await comment_btn.evaluate("el => el.click()")
+                await asyncio.sleep(3)
+
         comment_nicks = await main_frame.query_selector_all(".u_cbox_nick")
         for nick_el in comment_nicks:
             try:
@@ -786,6 +744,7 @@ class NaverNeighborBot:
                                 gemini_api_key: str = "",
                                 group_name: str = "이웃1",
                                 cutoff_date: str = "",
+                                sort_order: str = "업데이트순",
                                 progress_callback: Callable[[int, int], None] = None):
         """기능 2: 서로이웃 관리 페이지에서 이웃 수집 → 최신글에 댓글 작성"""
         self.is_running = True
@@ -814,7 +773,7 @@ class NaverNeighborBot:
             # ── Phase 1: 이웃 목록 수집 ──
             self.log("=" * 50)
             self.log("Phase 1: 이웃 목록 수집 시작")
-            self.log(f"그룹: {group_name} | 기준일: {cutoff_date}")
+            self.log(f"그룹: {group_name} | 기준일: {cutoff_date} | 정렬: {sort_order}")
             self.log("=" * 50)
 
             await self._navigate_to_buddy_page(blog_id)
@@ -824,7 +783,7 @@ class NaverNeighborBot:
                 return
 
             await self._select_buddy_group(frame, group_name)
-            await self._change_sort_to_update(frame)
+            await self._change_sort_order(frame, sort_order)
 
             all_targets = []
             page_num = 1
@@ -836,7 +795,7 @@ class NaverNeighborBot:
                     self.log("papermain 프레임 없음")
                     break
 
-                buddies = await self._extract_buddy_list(frame)
+                buddies = await self._extract_buddy_list(frame, sort_order)
                 self.log(f"이웃 수: {len(buddies)}")
                 if not buddies:
                     break

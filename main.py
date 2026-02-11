@@ -78,24 +78,11 @@ class NaverNeighborApp(ctk.CTk):
         )
         self.neighbor_msg_entry.grid(row=3, column=1, padx=10, pady=8)
 
-        comment_frame = ctk.CTkFrame(tab)
-        comment_frame.pack(padx=10, pady=5, fill="x")
-
-        self.comment_toggle_var = ctk.BooleanVar(value=True)
-        self.comment_toggle = ctk.CTkSwitch(
-            comment_frame, text="서로이웃 신청 성공 시 최신글에 댓글 남기기",
-            variable=self.comment_toggle_var,
-            command=self._on_comment_toggle
-        )
-        self.comment_toggle.grid(row=0, column=0, columnspan=2, padx=10, pady=8, sticky="w")
-
-        api_key_label = ctk.CTkLabel(comment_frame, text="Gemini API 키:")
-        api_key_label.grid(row=1, column=0, padx=10, pady=8, sticky="w")
-        self.api_key_entry = ctk.CTkEntry(
-            comment_frame, width=380,
-            placeholder_text="Gemini API 키 입력 (필수)"
-        )
-        self.api_key_entry.grid(row=1, column=1, padx=10, pady=8)
+        max_label = ctk.CTkLabel(input_frame, text="최대 신청 수:")
+        max_label.grid(row=4, column=0, padx=10, pady=8, sticky="w")
+        self.max_success_entry = ctk.CTkEntry(input_frame, width=380, placeholder_text="100")
+        self.max_success_entry.insert(0, "100")
+        self.max_success_entry.grid(row=4, column=1, padx=10, pady=8)
 
         btn_frame = ctk.CTkFrame(tab, fg_color="transparent")
         btn_frame.pack(pady=10)
@@ -148,8 +135,18 @@ class NaverNeighborApp(ctk.CTk):
         self.t2_date_entry.insert(0, date.today().strftime("%Y-%m-%d"))
         self.t2_date_entry.grid(row=4, column=1, padx=10, pady=8)
 
+        sort_label = ctk.CTkLabel(input_frame, text="정렬 기준:")
+        sort_label.grid(row=5, column=0, padx=10, pady=8, sticky="w")
+        self.t2_sort_var = ctk.StringVar(value="업데이트순")
+        self.t2_sort_menu = ctk.CTkOptionMenu(
+            input_frame, width=380,
+            values=["업데이트순", "이웃추가순"],
+            variable=self.t2_sort_var
+        )
+        self.t2_sort_menu.grid(row=5, column=1, padx=10, pady=8)
+
         desc_label = ctk.CTkLabel(
-            tab, text="기준 날짜 이후 글을 올린 서로이웃의 최신글에 AI 댓글을 남깁니다.",
+            tab, text="선택한 정렬/날짜 기준으로 서로이웃의 최신글에 AI 댓글을 남깁니다.",
             font=ctk.CTkFont(size=12),
             text_color="gray"
         )
@@ -179,12 +176,6 @@ class NaverNeighborApp(ctk.CTk):
         self.progress_label.configure(text=f"진행 중: {current}/{total}")
         self.progress_bar.set(current / total if total > 0 else 0)
 
-    def _on_comment_toggle(self):
-        if self.comment_toggle_var.get():
-            self.api_key_entry.configure(state="normal")
-        else:
-            self.api_key_entry.configure(state="disabled")
-
     def _set_running(self, running: bool):
         self.is_running = running
         state_start = "disabled" if running else "normal"
@@ -198,23 +189,25 @@ class NaverNeighborApp(ctk.CTk):
         blog_url = self.url_entry.get().strip()
         user_id = self.id_entry.get().strip() or "lizidemarron"
         password = self.pw_entry.get()
-        enable_comment = self.comment_toggle_var.get()
-        gemini_api_key = self.api_key_entry.get().strip()
         neighbor_message = self.neighbor_msg_entry.get().strip() or "블로그 글 잘 봤습니다. 서로이웃 신청드려요!"
+
+        max_success_str = self.max_success_entry.get().strip() or "100"
+        try:
+            max_success = min(int(max_success_str), 100)
+            if max_success < 1:
+                max_success = 100
+        except ValueError:
+            max_success = 100
 
         if not blog_url or not password:
             self._log("블로그 URL과 비밀번호를 입력해주세요!")
-            return
-
-        if enable_comment and not gemini_api_key:
-            self._log("댓글 기능을 사용하려면 Gemini API 키를 입력해주세요!")
             return
 
         self._set_running(True)
 
         thread = threading.Thread(
             target=self._run_bot,
-            args=(blog_url, user_id, password, enable_comment, gemini_api_key, neighbor_message)
+            args=(blog_url, user_id, password, neighbor_message, max_success)
         )
         thread.daemon = True
         thread.start()
@@ -225,6 +218,7 @@ class NaverNeighborApp(ctk.CTk):
         gemini_api_key = self.t2_api_key_entry.get().strip()
         group_name = self.t2_group_entry.get().strip() or "이웃1"
         cutoff_date = self.t2_date_entry.get().strip() or date.today().strftime("%Y-%m-%d")
+        sort_order = self.t2_sort_var.get()
 
         if not password:
             self._log("비밀번호를 입력해주세요!")
@@ -238,14 +232,13 @@ class NaverNeighborApp(ctk.CTk):
 
         thread = threading.Thread(
             target=self._run_buddy_comment_bot,
-            args=(user_id, password, gemini_api_key, group_name, cutoff_date)
+            args=(user_id, password, gemini_api_key, group_name, cutoff_date, sort_order)
         )
         thread.daemon = True
         thread.start()
 
     def _run_bot(self, blog_url: str, user_id: str, password: str,
-                 enable_comment: bool, gemini_api_key: str,
-                 neighbor_message: str):
+                 neighbor_message: str, max_success: int):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
@@ -258,9 +251,8 @@ class NaverNeighborApp(ctk.CTk):
                 self.bot.run(
                     blog_url, user_id, password,
                     progress_callback=lambda c, t: self.after(0, self._update_progress, c, t),
-                    enable_comment=enable_comment,
-                    gemini_api_key=gemini_api_key,
-                    neighbor_message=neighbor_message
+                    neighbor_message=neighbor_message,
+                    max_success=max_success
                 )
             )
         finally:
@@ -269,7 +261,7 @@ class NaverNeighborApp(ctk.CTk):
 
     def _run_buddy_comment_bot(self, user_id: str, password: str,
                                 gemini_api_key: str, group_name: str,
-                                cutoff_date: str):
+                                cutoff_date: str, sort_order: str):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
@@ -284,6 +276,7 @@ class NaverNeighborApp(ctk.CTk):
                     gemini_api_key=gemini_api_key,
                     group_name=group_name,
                     cutoff_date=cutoff_date,
+                    sort_order=sort_order,
                     progress_callback=lambda c, t: self.after(0, self._update_progress, c, t),
                 )
             )
