@@ -11,7 +11,7 @@ class NaverNeighborApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
-        self.title("소현이의 서로이웃 자동 신청 후후")
+        self.title("네이버 서로이웃 매니저")
         self.geometry("600x950")
         self.resizable(False, False)
 
@@ -22,7 +22,7 @@ class NaverNeighborApp(ctk.CTk):
 
     def _create_widgets(self):
         title_label = ctk.CTkLabel(
-            self, text="소현이의 서로이웃 자동 신청 후후",
+            self, text="네이버 서로이웃 매니저",
             font=ctk.CTkFont(size=24, weight="bold")
         )
         title_label.pack(pady=15)
@@ -89,14 +89,15 @@ class NaverNeighborApp(ctk.CTk):
 
         self.start_btn = ctk.CTkButton(
             btn_frame, text="시작", width=150, height=40,
-            command=self._on_start, fg_color="green", hover_color="darkgreen"
+            command=self._on_start, fg_color="#2E8B57", hover_color="#256E4A",
+            font=ctk.CTkFont(size=16, weight="bold")
         )
         self.start_btn.grid(row=0, column=0, padx=10)
 
         self.stop_btn = ctk.CTkButton(
             btn_frame, text="중지", width=150, height=40,
-            command=self._on_stop, fg_color="red", hover_color="darkred",
-            state="disabled"
+            command=self._on_stop, fg_color="#C0392B", hover_color="#A33025",
+            state="disabled", font=ctk.CTkFont(size=16, weight="bold")
         )
         self.stop_btn.grid(row=0, column=1, padx=10)
 
@@ -157,14 +158,15 @@ class NaverNeighborApp(ctk.CTk):
 
         self.t2_start_btn = ctk.CTkButton(
             btn_frame, text="시작", width=150, height=40,
-            command=self._on_start_buddy_comment, fg_color="green", hover_color="darkgreen"
+            command=self._on_start_buddy_comment, fg_color="#2E8B57", hover_color="#256E4A",
+            font=ctk.CTkFont(size=16, weight="bold")
         )
         self.t2_start_btn.grid(row=0, column=0, padx=10)
 
         self.t2_stop_btn = ctk.CTkButton(
             btn_frame, text="중지", width=150, height=40,
-            command=self._on_stop, fg_color="red", hover_color="darkred",
-            state="disabled"
+            command=self._on_stop, fg_color="#C0392B", hover_color="#A33025",
+            state="disabled", font=ctk.CTkFont(size=16, weight="bold")
         )
         self.t2_stop_btn.grid(row=0, column=1, padx=10)
 
