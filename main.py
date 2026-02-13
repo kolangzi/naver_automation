@@ -2,7 +2,8 @@ import customtkinter as ctk
 import asyncio
 import threading
 from datetime import date
-from browser_automation import NaverNeighborBot
+from neighbor_request import NeighborRequestBot
+from buddy_comment import BuddyCommentBot
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -244,7 +245,7 @@ class NaverNeighborApp(ctk.CTk):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-        self.bot = NaverNeighborBot(
+        self.bot = NeighborRequestBot(
             log_callback=lambda msg: self.after(0, self._log, msg)
         )
 
@@ -267,7 +268,7 @@ class NaverNeighborApp(ctk.CTk):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-        self.bot = NaverNeighborBot(
+        self.bot = BuddyCommentBot(
             log_callback=lambda msg: self.after(0, self._log, msg)
         )
 
