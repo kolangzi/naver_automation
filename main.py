@@ -4,6 +4,7 @@ import threading
 from datetime import date
 from neighbor_request import NeighborRequestBot
 from buddy_comment import BuddyCommentBot
+from reply_bot import ReplyBot
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -33,9 +34,11 @@ class NaverNeighborApp(ctk.CTk):
 
         self.tabview.add("서로이웃 신청")
         self.tabview.add("서로이웃 댓글")
+        self.tabview.add("대댓글")
 
         self._create_tab1()
         self._create_tab2()
+        self._create_tab3()
 
         self.progress_label = ctk.CTkLabel(self, text="대기 중...")
         self.progress_label.pack(pady=5)
@@ -171,6 +174,60 @@ class NaverNeighborApp(ctk.CTk):
         )
         self.t2_stop_btn.grid(row=0, column=1, padx=10)
 
+    def _create_tab3(self):
+        tab = self.tabview.tab("대댓글")
+
+        input_frame = ctk.CTkFrame(tab)
+        input_frame.pack(padx=10, pady=5, fill="x")
+
+        id_label = ctk.CTkLabel(input_frame, text="네이버 ID:")
+        id_label.grid(row=0, column=0, padx=10, pady=8, sticky="w")
+        self.t3_id_entry = ctk.CTkEntry(input_frame, width=380, placeholder_text="lizidemarron")
+        self.t3_id_entry.grid(row=0, column=1, padx=10, pady=8)
+
+        pw_label = ctk.CTkLabel(input_frame, text="비밀번호:")
+        pw_label.grid(row=1, column=0, padx=10, pady=8, sticky="w")
+        self.t3_pw_entry = ctk.CTkEntry(input_frame, width=380, placeholder_text="비밀번호 입력", show="*")
+        self.t3_pw_entry.grid(row=1, column=1, padx=10, pady=8)
+
+        api_key_label = ctk.CTkLabel(input_frame, text="Gemini API 키:")
+        api_key_label.grid(row=2, column=0, padx=10, pady=8, sticky="w")
+        self.t3_api_key_entry = ctk.CTkEntry(
+            input_frame, width=380,
+            placeholder_text="Gemini API 키 입력 (필수)"
+        )
+        self.t3_api_key_entry.grid(row=2, column=1, padx=10, pady=8)
+
+        date_label = ctk.CTkLabel(input_frame, text="기준 날짜:")
+        date_label.grid(row=3, column=0, padx=10, pady=8, sticky="w")
+        self.t3_date_entry = ctk.CTkEntry(input_frame, width=380, placeholder_text="YYYY-MM-DD")
+        self.t3_date_entry.insert(0, date.today().strftime("%Y-%m-%d"))
+        self.t3_date_entry.grid(row=3, column=1, padx=10, pady=8)
+
+        desc_label = ctk.CTkLabel(
+            tab, text="내 블로그 글에 달린 댓글에 AI 대댓글을 남깁니다.",
+            font=ctk.CTkFont(size=12),
+            text_color="gray"
+        )
+        desc_label.pack(pady=5)
+
+        btn_frame = ctk.CTkFrame(tab, fg_color="transparent")
+        btn_frame.pack(pady=10)
+
+        self.t3_start_btn = ctk.CTkButton(
+            btn_frame, text="시작", width=150, height=40,
+            command=self._on_start_reply, fg_color="#2E8B57", hover_color="#256E4A",
+            font=ctk.CTkFont(size=16, weight="bold")
+        )
+        self.t3_start_btn.grid(row=0, column=0, padx=10)
+
+        self.t3_stop_btn = ctk.CTkButton(
+            btn_frame, text="중지", width=150, height=40,
+            command=self._on_stop, fg_color="#C0392B", hover_color="#A33025",
+            state="disabled", font=ctk.CTkFont(size=16, weight="bold")
+        )
+        self.t3_stop_btn.grid(row=0, column=1, padx=10)
+
     def _log(self, message: str):
         self.log_textbox.insert("end", f"{message}\n")
         self.log_textbox.see("end")
@@ -187,6 +244,8 @@ class NaverNeighborApp(ctk.CTk):
         self.stop_btn.configure(state=state_stop)
         self.t2_start_btn.configure(state=state_start)
         self.t2_stop_btn.configure(state=state_stop)
+        self.t3_start_btn.configure(state=state_start)
+        self.t3_stop_btn.configure(state=state_stop)
 
     def _on_start(self):
         blog_url = self.url_entry.get().strip()
@@ -240,6 +299,27 @@ class NaverNeighborApp(ctk.CTk):
         thread.daemon = True
         thread.start()
 
+    def _on_start_reply(self):
+        user_id = self.t3_id_entry.get().strip() or "lizidemarron"
+        password = self.t3_pw_entry.get()
+        gemini_api_key = self.t3_api_key_entry.get().strip()
+        cutoff_date = self.t3_date_entry.get().strip() or date.today().strftime("%Y-%m-%d")
+
+        if not password:
+            self._log("비밀번호를 입력해주세요!")
+            return
+        if not gemini_api_key:
+            self._log("Gemini API 키를 입력해주세요!")
+            return
+
+        self._set_running(True)
+        thread = threading.Thread(
+            target=self._run_reply_bot,
+            args=(user_id, password, gemini_api_key, cutoff_date)
+        )
+        thread.daemon = True
+        thread.start()
+
     def _run_bot(self, blog_url: str, user_id: str, password: str,
                  neighbor_message: str, max_success: int):
         loop = asyncio.new_event_loop()
@@ -280,6 +360,28 @@ class NaverNeighborApp(ctk.CTk):
                     group_name=group_name,
                     cutoff_date=cutoff_date,
                     sort_order=sort_order,
+                    progress_callback=lambda c, t: self.after(0, self._update_progress, c, t),
+                )
+            )
+        finally:
+            loop.close()
+            self.after(0, self._on_complete)
+
+    def _run_reply_bot(self, user_id: str, password: str,
+                       gemini_api_key: str, cutoff_date: str):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+
+        self.bot = ReplyBot(
+            log_callback=lambda msg: self.after(0, self._log, msg)
+        )
+
+        try:
+            loop.run_until_complete(
+                self.bot.run_reply(
+                    user_id, password,
+                    gemini_api_key=gemini_api_key,
+                    cutoff_date=cutoff_date,
                     progress_callback=lambda c, t: self.after(0, self._update_progress, c, t),
                 )
             )
