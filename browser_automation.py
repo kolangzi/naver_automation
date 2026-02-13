@@ -745,6 +745,52 @@ class NaverNeighborBot:
                 continue
         return False
 
+    async def _write_comment(self, main_frame, target_id: str, comment: str) -> bool:
+        try:
+            comment_write_btn = await main_frame.query_selector('a:has-text("댓글 쓰기")')
+            if not comment_write_btn:
+                comment_write_btn = await main_frame.query_selector('a:has-text("댓글")')
+            if comment_write_btn:
+                await comment_write_btn.evaluate("el => el.click()")
+                await asyncio.sleep(3)
+
+            placeholder = await main_frame.query_selector(".u_cbox_guide")
+            if placeholder:
+                await placeholder.evaluate("el => el.click()")
+                await asyncio.sleep(1)
+
+            comment_input = await main_frame.query_selector('div[contenteditable="true"].u_cbox_text')
+            if not comment_input:
+                comment_input = await main_frame.query_selector('div[contenteditable="true"]')
+            if not comment_input:
+                self.log(f"  [{target_id}] 댓글 입력 필드 못 찾음 - skip")
+                return False
+
+            await comment_input.evaluate('''(el, text) => {
+                el.focus();
+                el.innerText = text;
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+            }''', comment)
+            await asyncio.sleep(1)
+
+            register_btn = await main_frame.query_selector(".u_cbox_btn_upload")
+            if not register_btn:
+                register_btn = await main_frame.query_selector('button:has-text("등록")')
+            if not register_btn:
+                self.log(f"  [{target_id}] 등록 버튼 못 찾음 - skip")
+                return False
+
+            await register_btn.evaluate("el => el.click()")
+            await asyncio.sleep(3)
+            self.log(f"  [{target_id}] 댓글 등록 완료: '{comment[:30]}'")
+            return True
+
+        except Exception as e:
+            self.log(f"  [{target_id}] 댓글 오류: {str(e)[:80]}")
+            return False
+
     async def run_buddy_comment(self, user_id: str, password: str,
                                 gemini_api_key: str = "",
                                 group_name: str = "이웃1",
@@ -840,6 +886,7 @@ class NaverNeighborBot:
             total = len(all_targets)
             comment_count = 0
             skip_count = 0
+            deferred = []
 
             for i, buddy in enumerate(all_targets):
                 if not self.is_running:
@@ -892,9 +939,9 @@ class NaverNeighborBot:
                         comment = generated
                         self.log(f"  AI 댓글: '{comment}'")
                     else:
-                        self.log(f"  AI 댓글 생성 3회 시도 모두 실패")
-                        self.log("AI 모델이 정상 동작하지 않습니다. 작업을 종료합니다.")
-                        return
+                        self.log(f"  AI 댓글 생성 3회 시도 모두 실패 - 보류")
+                        deferred.append(buddy)
+                        continue
                 else:
                     self.log(f"  글 내용 없음 - skip")
                     skip_count += 1
@@ -904,54 +951,84 @@ class NaverNeighborBot:
                     skip_count += 1
                     continue
 
-                try:
-                    comment_write_btn = await main_frame.query_selector('a:has-text("댓글 쓰기")')
-                    if not comment_write_btn:
-                        comment_write_btn = await main_frame.query_selector('a:has-text("댓글")')
-                    if comment_write_btn:
-                        await comment_write_btn.evaluate("el => el.click()")
-                        await asyncio.sleep(3)
-
-                    placeholder = await main_frame.query_selector(".u_cbox_guide")
-                    if placeholder:
-                        await placeholder.evaluate("el => el.click()")
-                        await asyncio.sleep(1)
-
-                    comment_input = await main_frame.query_selector('div[contenteditable="true"].u_cbox_text')
-                    if not comment_input:
-                        comment_input = await main_frame.query_selector('div[contenteditable="true"]')
-                    if not comment_input:
-                        self.log(f"  [{target_id}] 댓글 입력 필드 못 찾음 - skip")
-                        skip_count += 1
-                        continue
-
-                    await comment_input.evaluate('''(el, text) => {
-                        el.focus();
-                        el.innerText = text;
-                        el.dispatchEvent(new Event('input', { bubbles: true }));
-                        el.dispatchEvent(new Event('change', { bubbles: true }));
-                        el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
-                    }''', comment)
-                    await asyncio.sleep(1)
-
-                    register_btn = await main_frame.query_selector(".u_cbox_btn_upload")
-                    if not register_btn:
-                        register_btn = await main_frame.query_selector('button:has-text("등록")')
-                    if not register_btn:
-                        self.log(f"  [{target_id}] 등록 버튼 못 찾음 - skip")
-                        skip_count += 1
-                        continue
-
-                    await register_btn.evaluate("el => el.click()")
-                    await asyncio.sleep(3)
-                    self.log(f"  [{target_id}] 댓글 등록 완료: '{comment[:30]}'")
+                result = await self._write_comment(main_frame, target_id, comment)
+                if result:
                     comment_count += 1
-
-                except Exception as e:
-                    self.log(f"  [{target_id}] 댓글 오류: {str(e)[:80]}")
+                else:
                     skip_count += 1
 
                 await HumanDelay.between_requests()
+
+            if deferred and self.is_running:
+                self.log(f"\n{'=' * 50}")
+                self.log(f"보류 목록 재시도: {len(deferred)}건")
+                self.log("=" * 50)
+
+                for i, buddy in enumerate(deferred):
+                    if not self.is_running:
+                        self.log("사용자에 의해 중단됨")
+                        break
+
+                    target_id = buddy["blog_id"]
+                    nick = buddy["nick"]
+                    self.log(f"\n[보류 {i+1}/{len(deferred)}] {nick} ({target_id})")
+
+                    log_no = await self.get_latest_post_log_no(target_id)
+                    if not log_no:
+                        self.log(f"  logNo 못 찾음 - skip")
+                        skip_count += 1
+                        continue
+
+                    content = await self.get_post_content(target_id, log_no)
+
+                    post_url = f"https://blog.naver.com/{target_id}/{log_no}"
+                    await self.page.goto(post_url)
+                    await HumanDelay.page_load()
+                    await asyncio.sleep(3)
+
+                    main_frame = self._get_main_frame()
+                    if not main_frame:
+                        self.log(f"  [{target_id}] mainFrame 못 찾음 - skip")
+                        skip_count += 1
+                        continue
+
+                    await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await asyncio.sleep(1)
+                    await main_frame.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                    await asyncio.sleep(2)
+
+                    already = await self._check_my_comment_exists(main_frame, blog_id)
+                    if already:
+                        self.log(f"  [{target_id}] 이미 내 댓글 존재 - skip")
+                        skip_count += 1
+                        continue
+
+                    comment = None
+                    if ai_generator and (content["title"] or content["body"]):
+                        generated = ai_generator.generate(content["title"], content["body"])
+                        if generated:
+                            comment = generated
+                            self.log(f"  AI 댓글: '{comment}'")
+                        else:
+                            self.log(f"  AI 댓글 생성 재시도 실패 - skip")
+                            skip_count += 1
+                            continue
+                    else:
+                        self.log(f"  글 내용 없음 - skip")
+                        skip_count += 1
+                        continue
+
+                    if not comment:
+                        skip_count += 1
+                        continue
+
+                    result = await self._write_comment(main_frame, target_id, comment)
+                    if result:
+                        comment_count += 1
+                    else:
+                        skip_count += 1
+
+                    await HumanDelay.between_requests()
 
             self.log(f"\n{'=' * 50}")
             self.log(f"완료! 수집 대상: {total}명 | 댓글 등록: {comment_count}개 | 스킵: {skip_count}개")
