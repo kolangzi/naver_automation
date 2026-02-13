@@ -405,7 +405,7 @@ class NaverNeighborBot:
         self.log(f"[{target_id}] logNo를 찾지 못함")
         return None
 
-    async def get_post_content(self, target_id: str, log_no: str) -> dict:
+    async def get_post_content(self, target_id: str, log_no: str) -> tuple:
         post_url = f'https://blog.naver.com/{target_id}/{log_no}'
         self.log(f"[{target_id}] 글 접속: {post_url}")
         await self.page.goto(post_url)
@@ -414,7 +414,7 @@ class NaverNeighborBot:
 
         main_frame = self._get_main_frame()
         if not main_frame:
-            return {'title': '', 'body': ''}
+            return {'title': '', 'body': ''}, None
 
         title = ''
         title_el = await main_frame.query_selector('.se-title-text')
@@ -427,7 +427,7 @@ class NaverNeighborBot:
             body = await body_el.inner_text()
 
         self.log(f"[{target_id}] 제목: {title[:50]}")
-        return {'title': title.strip(), 'body': body.strip()[:1000]}
+        return {'title': title.strip(), 'body': body.strip()[:1000]}, main_frame
 
     async def write_comment(self, target_id: str, log_no: str, comment_text: str) -> bool:
         post_url = f'https://blog.naver.com/{target_id}/{log_no}'
@@ -906,14 +906,8 @@ class NaverNeighborBot:
                     skip_count += 1
                     continue
 
-                content = await self.get_post_content(target_id, log_no)
+                content, main_frame = await self.get_post_content(target_id, log_no)
 
-                post_url = f"https://blog.naver.com/{target_id}/{log_no}"
-                await self.page.goto(post_url)
-                await HumanDelay.page_load()
-                await asyncio.sleep(3)
-
-                main_frame = self._get_main_frame()
                 if not main_frame:
                     self.log(f"  [{target_id}] mainFrame 못 찾음 - skip")
                     skip_count += 1
@@ -979,14 +973,8 @@ class NaverNeighborBot:
                         skip_count += 1
                         continue
 
-                    content = await self.get_post_content(target_id, log_no)
+                    content, main_frame = await self.get_post_content(target_id, log_no)
 
-                    post_url = f"https://blog.naver.com/{target_id}/{log_no}"
-                    await self.page.goto(post_url)
-                    await HumanDelay.page_load()
-                    await asyncio.sleep(3)
-
-                    main_frame = self._get_main_frame()
                     if not main_frame:
                         self.log(f"  [{target_id}] mainFrame 못 찾음 - skip")
                         skip_count += 1
