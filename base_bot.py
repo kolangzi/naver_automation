@@ -1,7 +1,17 @@
 from playwright.async_api import async_playwright, Page, Browser
+from playwright_stealth import Stealth
 from utils import HumanDelay, human_type
 import asyncio
+import random
 from typing import Callable, Optional
+
+_USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36',
+]
 
 
 class NaverBaseBot:
@@ -22,16 +32,19 @@ class NaverBaseBot:
                 '--disable-accelerator-table',
             ]
         )
+        user_agent = random.choice(_USER_AGENTS)
         context = await self.browser.new_context(
             viewport={'width': 1280, 'height': 900},
-            user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            user_agent=user_agent,
+            locale='ko-KR',
+            timezone_id='Asia/Seoul',
         )
         self.page = await context.new_page()
 
+        stealth = Stealth()
+        await stealth.apply_stealth_async(self.page)
+
         await self.page.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
             window.addEventListener('beforeunload', function(e) {
                 e.preventDefault();
                 e.returnValue = '';

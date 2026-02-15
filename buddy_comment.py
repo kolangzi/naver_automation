@@ -7,7 +7,7 @@ from blog_actions import (
     write_comment,
 )
 from comment_ai import CommentGenerator
-from utils import HumanDelay
+from utils import HumanDelay, random_sleep, maybe_idle, DAILY_ACTION_LIMIT
 import asyncio
 import re
 from typing import Callable
@@ -25,7 +25,7 @@ class BuddyCommentBot(NaverBaseBot):
         url = f"https://admin.blog.naver.com/AdminMain.naver?blogId={blog_id}&Redirect=Buddyinfo"
         self.log(f"이웃 관리 페이지 이동: {url}")
         await self.page.goto(url)
-        await asyncio.sleep(5)
+        await random_sleep(3.0, 6.0)
 
     async def _select_buddy_group(self, frame, group_name: str) -> bool:
         self.log(f"그룹 선택: '{group_name}'")
@@ -34,14 +34,14 @@ class BuddyCommentBot(NaverBaseBot):
             self.log("  그룹 드롭다운 못 찾음")
             return False
         await group_box.click()
-        await asyncio.sleep(1)
+        await random_sleep(0.8, 2.0)
         items = await frame.query_selector_all("#buddysel_groupall .selectbox-list li")
         for item in items:
             text = (await item.inner_text()).strip()
             if group_name in text:
                 await item.click()
                 self.log(f"  '{group_name}' 선택 완료")
-                await asyncio.sleep(3)
+                await random_sleep(2.0, 4.0)
                 return True
         self.log(f"  '{group_name}' 못 찾음")
         return False
@@ -62,7 +62,7 @@ class BuddyCommentBot(NaverBaseBot):
                 self.log("  이미 이웃추가순")
                 return True
         await sort_box.click()
-        await asyncio.sleep(1)
+        await random_sleep(0.8, 2.0)
         items = await frame.query_selector_all("#buddysel_order .selectbox-list li")
         target_keyword = "업데이트" if sort_order == "업데이트순" else "이웃추가"
         for item in items:
@@ -70,7 +70,7 @@ class BuddyCommentBot(NaverBaseBot):
             if target_keyword in text:
                 await item.click()
                 self.log(f"  '{sort_order}' 선택 완료")
-                await asyncio.sleep(3)
+                await random_sleep(2.0, 4.0)
                 return True
         self.log(f"  '{sort_order}' 못 찾음")
         return False
@@ -124,13 +124,13 @@ class BuddyCommentBot(NaverBaseBot):
             text = (await link.inner_text()).strip()
             if text == str(next_page):
                 await link.click()
-                await asyncio.sleep(3)
+                await random_sleep(2.0, 4.0)
                 self.log(f"  페이지 {next_page} 이동 완료")
                 return True
         next_btn = await frame.query_selector('.paginate a:has-text("다음"), a.next')
         if next_btn:
             await next_btn.click()
-            await asyncio.sleep(3)
+            await random_sleep(2.0, 4.0)
             self.log("  '다음' 버튼으로 이동")
             return True
         self.log("  더 이상 다음 페이지 없음")
@@ -228,6 +228,10 @@ class BuddyCommentBot(NaverBaseBot):
                     self.log("사용자에 의해 중단됨")
                     break
 
+                if comment_count >= DAILY_ACTION_LIMIT:
+                    self.log(f"\n일일 액션 제한({DAILY_ACTION_LIMIT}건) 도달 → 중단")
+                    break
+
                 target_id = buddy["blog_id"]
                 nick = buddy["nick"]
                 self.log(f"\n[{i+1}/{total}] {nick} ({target_id})")
@@ -251,9 +255,9 @@ class BuddyCommentBot(NaverBaseBot):
                     continue
 
                 await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await asyncio.sleep(1)
+                await random_sleep(0.8, 2.0)
                 await main_frame.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await asyncio.sleep(2)
+                await random_sleep(1.5, 3.0)
 
                 await click_sympathy_on_frame(main_frame, self.log)
 
@@ -265,7 +269,7 @@ class BuddyCommentBot(NaverBaseBot):
 
                 comment = None
                 if ai_generator and (content["title"] or content["body"]):
-                    generated = ai_generator.generate(content["title"], content["body"])
+                    generated = await ai_generator.generate(content["title"], content["body"])
                     if generated:
                         comment = generated
                         self.log(f"  AI 댓글: '{comment}'")
@@ -289,8 +293,9 @@ class BuddyCommentBot(NaverBaseBot):
                     skip_count += 1
 
                 await HumanDelay.between_requests()
+                await maybe_idle(self.log)
 
-            if deferred and self.is_running:
+            if deferred and self.is_running and comment_count < DAILY_ACTION_LIMIT:
                 self.log(f"\n{'=' * 50}")
                 self.log(f"보류 목록 재시도: {len(deferred)}건")
                 self.log("=" * 50)
@@ -298,6 +303,10 @@ class BuddyCommentBot(NaverBaseBot):
                 for i, buddy in enumerate(deferred):
                     if not self.is_running:
                         self.log("사용자에 의해 중단됨")
+                        break
+
+                    if comment_count >= DAILY_ACTION_LIMIT:
+                        self.log(f"\n일일 액션 제한({DAILY_ACTION_LIMIT}건) 도달 → 중단")
                         break
 
                     target_id = buddy["blog_id"]
@@ -320,9 +329,9 @@ class BuddyCommentBot(NaverBaseBot):
                         continue
 
                     await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    await asyncio.sleep(1)
+                    await random_sleep(0.8, 2.0)
                     await main_frame.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    await asyncio.sleep(2)
+                    await random_sleep(1.5, 3.0)
 
                     already = await check_my_comment_exists(main_frame, blog_id)
                     if already:
@@ -332,7 +341,7 @@ class BuddyCommentBot(NaverBaseBot):
 
                     comment = None
                     if ai_generator and (content["title"] or content["body"]):
-                        generated = ai_generator.generate(content["title"], content["body"])
+                        generated = await ai_generator.generate(content["title"], content["body"])
                         if generated:
                             comment = generated
                             self.log(f"  AI 댓글: '{comment}'")

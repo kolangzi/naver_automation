@@ -1,6 +1,7 @@
 import asyncio
 import re
 from typing import Callable, Optional
+from utils import random_sleep
 
 
 async def click_sympathy_on_frame(main_frame, log: Callable[[str], None]) -> bool:
@@ -16,7 +17,7 @@ async def click_sympathy_on_frame(main_frame, log: Callable[[str], None]) -> boo
             return True
 
         await like_face_btn.evaluate('el => el.click()')
-        await asyncio.sleep(1)
+        await random_sleep(0.8, 2.0)
 
         like_btn = await main_frame.query_selector('.my_reaction a.u_likeit_list_button._button[data-type="like"]')
         if not like_btn:
@@ -29,7 +30,7 @@ async def click_sympathy_on_frame(main_frame, log: Callable[[str], None]) -> boo
             return True
 
         await like_btn.evaluate('el => el.click()')
-        await asyncio.sleep(2)
+        await random_sleep(1.5, 3.0)
 
         log("  공감 클릭 완료!")
         return True
@@ -45,7 +46,7 @@ async def get_latest_post_log_no(page, target_id: str, log: Callable[[str], None
     await page.goto(post_list_url)
     from utils import HumanDelay
     await HumanDelay.page_load()
-    await asyncio.sleep(3)
+    await random_sleep(2.0, 4.0)
 
     for f in page.frames:
         match = re.search(r'sympathyFrm(\d+)', f.name)
@@ -79,7 +80,7 @@ async def get_post_content(page, target_id: str, log_no: str,
     await page.goto(post_url)
     from utils import HumanDelay
     await HumanDelay.page_load()
-    await asyncio.sleep(3)
+    await random_sleep(2.0, 4.0)
 
     main_frame = get_main_frame()
     if not main_frame:
@@ -105,7 +106,7 @@ async def check_my_comment_exists(main_frame, my_blog_id: str) -> bool:
         comment_btn = await main_frame.query_selector("a._cmtList")
         if comment_btn:
             await comment_btn.evaluate("el => el.click()")
-            await asyncio.sleep(3)
+            await random_sleep(2.0, 4.0)
 
     comment_nicks = await main_frame.query_selector_all(".u_cbox_nick")
     for nick_el in comment_nicks:
@@ -136,7 +137,7 @@ async def load_comments(main_frame, log: Callable[[str], None]) -> bool:
     comment_btn = await main_frame.query_selector("a._cmtList")
     if comment_btn:
         await comment_btn.evaluate("el => el.click()")
-        await asyncio.sleep(3)
+        await random_sleep(2.0, 4.0)
         loaded = await main_frame.query_selector_all("li.u_cbox_comment")
         if loaded:
             log("  댓글 영역 로드 완료")
@@ -170,7 +171,7 @@ async def write_reply(main_frame, comment_no: str, reply_text: str,
             return False
 
         await reply_btn.evaluate("el => el.click()")
-        await asyncio.sleep(2)
+        await random_sleep(1.5, 3.0)
 
         # 대댓글 입력 필드 찾기 (reply_textarea_{commentNo} 포함하는 id)
         reply_input = await main_frame.query_selector(
@@ -199,7 +200,7 @@ async def write_reply(main_frame, comment_no: str, reply_text: str,
             el.dispatchEvent(new Event('change', { bubbles: true }));
             el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
         }''', reply_text)
-        await asyncio.sleep(1)
+        await random_sleep(0.8, 2.0)
 
         # 등록 버튼 찾기 — 대댓글 영역의 등록 버튼
         # reply_input의 가장 가까운 .u_cbox_write_box 안에 있는 등록 버튼
@@ -225,7 +226,7 @@ async def write_reply(main_frame, comment_no: str, reply_text: str,
             return False
 
         await btn_element.evaluate("el => el.click()")
-        await asyncio.sleep(3)
+        await random_sleep(2.0, 4.0)
         log(f"  대댓글 등록 완료: '{reply_text[:30]}'")
         return True
 
@@ -242,12 +243,12 @@ async def write_comment(main_frame, target_id: str, comment: str,
             comment_write_btn = await main_frame.query_selector('a:has-text("댓글")')
         if comment_write_btn:
             await comment_write_btn.evaluate("el => el.click()")
-            await asyncio.sleep(3)
+            await random_sleep(2.0, 4.0)
 
         placeholder = await main_frame.query_selector(".u_cbox_guide")
         if placeholder:
             await placeholder.evaluate("el => el.click()")
-            await asyncio.sleep(1)
+            await random_sleep(0.8, 2.0)
 
         comment_input = await main_frame.query_selector('div[contenteditable="true"].u_cbox_text')
         if not comment_input:
@@ -263,7 +264,7 @@ async def write_comment(main_frame, target_id: str, comment: str,
             el.dispatchEvent(new Event('change', { bubbles: true }));
             el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
         }''', comment)
-        await asyncio.sleep(1)
+        await random_sleep(0.8, 2.0)
 
         register_btn = await main_frame.query_selector(".u_cbox_btn_upload")
         if not register_btn:
@@ -273,7 +274,7 @@ async def write_comment(main_frame, target_id: str, comment: str,
             return False
 
         await register_btn.evaluate("el => el.click()")
-        await asyncio.sleep(3)
+        await random_sleep(2.0, 4.0)
         log(f"  [{target_id}] 댓글 등록 완료: '{comment[:30]}'")
         return True
 

@@ -1,3 +1,4 @@
+import asyncio
 import time
 from google import genai
 from typing import Optional
@@ -9,14 +10,14 @@ class CommentGenerator:
         self.model = 'gemini-2.5-flash-lite'
         self.reply_model = 'gemini-3-flash-preview'
         self._last_request_time = 0.0
-        self._min_interval = 4.0  # RPM 15 = 4초/요청
+        self._min_interval = 4.0
 
-    def _wait_rate_limit(self):
+    async def _wait_rate_limit(self):
         elapsed = time.time() - self._last_request_time
         if elapsed < self._min_interval:
             sleep_time = self._min_interval - elapsed
             print(f"Rate limit 보호: {sleep_time:.1f}초 대기")
-            time.sleep(sleep_time)
+            await asyncio.sleep(sleep_time)
 
     def _is_retryable_error(self, error_msg: str) -> bool:
         retryable_codes = ['429', '500', '503', '504',
@@ -24,7 +25,7 @@ class CommentGenerator:
                            'UNAVAILABLE', 'DEADLINE_EXCEEDED']
         return any(code in error_msg for code in retryable_codes)
 
-    def generate(self, title: str, body: str) -> Optional[str]:
+    async def generate(self, title: str, body: str) -> Optional[str]:
         prompt = (
             "너는 30대 여성 네이버 블로거야.\n"
             "아래 블로그 글을 읽고, 글 내용에 맞는 자연스러운 댓글을 작성해.\n"
@@ -41,7 +42,7 @@ class CommentGenerator:
 
         for attempt in range(3):
             try:
-                self._wait_rate_limit()
+                await self._wait_rate_limit()
                 self._last_request_time = time.time()
 
                 response = self.client.models.generate_content(
@@ -58,16 +59,15 @@ class CommentGenerator:
             except Exception as e:
                 error_msg = str(e)
                 if self._is_retryable_error(error_msg) and attempt < 2:
-                    # exponential backoff: 15초 → 30초 → 60초
                     wait = 15 * (2 ** attempt)
                     print(f"Gemini API 일시적 오류 - {wait}초 후 재시도 ({attempt+1}/3): {error_msg[:80]}")
-                    time.sleep(wait)
+                    await asyncio.sleep(wait)
                     continue
                 print(f"Gemini API 오류 (복구 불가): {e}")
                 return None
         return None
 
-    def generate_reply(self, title: str, body: str, comment_text: str) -> Optional[str]:
+    async def generate_reply(self, title: str, body: str, comment_text: str) -> Optional[str]:
         prompt = (
             "너는 30대 여성 네이버 블로거야.\n"
             "아래는 내 블로그 글과, 다른 사람이 남긴 댓글이야.\n"
@@ -87,7 +87,7 @@ class CommentGenerator:
 
         for attempt in range(3):
             try:
-                self._wait_rate_limit()
+                await self._wait_rate_limit()
                 self._last_request_time = time.time()
 
                 response = self.client.models.generate_content(
@@ -106,7 +106,7 @@ class CommentGenerator:
                 if self._is_retryable_error(error_msg) and attempt < 2:
                     wait = 15 * (2 ** attempt)
                     print(f"Gemini API 일시적 오류 - {wait}초 후 재시도 ({attempt+1}/3): {error_msg[:80]}")
-                    time.sleep(wait)
+                    await asyncio.sleep(wait)
                     continue
                 print(f"Gemini API 오류 (복구 불가): {e}")
                 return None

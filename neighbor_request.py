@@ -1,5 +1,5 @@
 from base_bot import NaverBaseBot
-from utils import HumanDelay
+from utils import HumanDelay, random_sleep, maybe_idle
 import asyncio
 import re
 from typing import Callable, List
@@ -27,7 +27,7 @@ class NeighborRequestBot(NaverBaseBot):
             self.log(f"공감 클릭을 위해 글 페이지 이동: {blog_url}")
             await self.page.goto(blog_url)
             await HumanDelay.page_load()
-            await asyncio.sleep(3)
+            await random_sleep(2.0, 4.0)
 
             main_frame = self._get_main_frame()
             if not main_frame:
@@ -35,7 +35,7 @@ class NeighborRequestBot(NaverBaseBot):
                 return False
 
             await main_frame.evaluate('window.scrollTo(0, document.body.scrollHeight)')
-            await asyncio.sleep(1)
+            await random_sleep(0.8, 2.0)
 
             like_face_btn = await main_frame.query_selector('.my_reaction a.u_likeit_button._face')
             if not like_face_btn:
@@ -49,7 +49,7 @@ class NeighborRequestBot(NaverBaseBot):
 
             self.log("공감 버튼 클릭 중...")
             await like_face_btn.evaluate('el => el.click()')
-            await asyncio.sleep(1)
+            await random_sleep(0.8, 2.0)
 
             like_btn = await main_frame.query_selector('.my_reaction a.u_likeit_list_button._button[data-type="like"]')
             if not like_btn:
@@ -62,7 +62,7 @@ class NeighborRequestBot(NaverBaseBot):
                 return True
 
             await like_btn.evaluate('el => el.click()')
-            await asyncio.sleep(2)
+            await random_sleep(1.5, 3.0)
 
             self.log("공감 클릭 완료!")
             return True
@@ -82,7 +82,7 @@ class NeighborRequestBot(NaverBaseBot):
 
         await self.page.goto(self.sympathy_url)
         await HumanDelay.page_load()
-        await asyncio.sleep(5)
+        await random_sleep(3.0, 6.0)
         return True
 
     async def _load_next_page(self) -> bool:
@@ -94,7 +94,7 @@ class NeighborRequestBot(NaverBaseBot):
             return False
         await next_btn.evaluate('el => el.click()')
         await HumanDelay.page_load()
-        await asyncio.sleep(2)
+        await random_sleep(1.5, 3.0)
         return True
 
     async def _restore_page_depth(self, depth: int) -> int:
@@ -175,7 +175,7 @@ class NeighborRequestBot(NaverBaseBot):
                 return False
 
             await popup.wait_for_load_state('domcontentloaded')
-            await asyncio.sleep(1)
+            await random_sleep(0.8, 2.0)
 
             self.log(f"[{name}] 팝업 열림")
 
@@ -206,7 +206,7 @@ class NeighborRequestBot(NaverBaseBot):
                 await HumanDelay.before_click()
                 await next_btn.click()
                 self.log(f"[{name}] 다음 버튼 클릭")
-                await asyncio.sleep(2)
+                await random_sleep(1.5, 3.0)
 
                 if popup.is_closed():
                     self.log(f"[{name}] 이미 신청 완료/진행중 - 완료 처리")
@@ -229,7 +229,7 @@ class NeighborRequestBot(NaverBaseBot):
                 await HumanDelay.before_click()
                 await submit_btn.click()
                 self.log(f"[{name}] 신청 버튼 클릭")
-                await asyncio.sleep(2)
+                await random_sleep(1.5, 3.0)
 
             await self._handle_popup_close(popup)
 
@@ -248,7 +248,7 @@ class NeighborRequestBot(NaverBaseBot):
             confirm_btn = await popup.query_selector('a:has-text("확인"), button:has-text("확인")')
             if confirm_btn:
                 await confirm_btn.click()
-                await asyncio.sleep(1)
+                await random_sleep(0.8, 2.0)
 
             if not popup.is_closed():
                 await popup.close()
@@ -259,7 +259,7 @@ class NeighborRequestBot(NaverBaseBot):
         if self.sympathy_url:
             await self.page.goto(self.sympathy_url)
             await HumanDelay.page_load()
-            await asyncio.sleep(5)
+            await random_sleep(3.0, 6.0)
 
     async def run(self, blog_url: str, user_id: str, password: str,
                   progress_callback: Callable[[int, int], None] = None,
@@ -318,6 +318,7 @@ class NeighborRequestBot(NaverBaseBot):
                         progress_callback(success_count, max_success)
 
                     await HumanDelay.between_requests()
+                    await maybe_idle(self.log)
 
                     await self._reload_sympathy_page()
                     restored = await self._restore_page_depth(page_depth)

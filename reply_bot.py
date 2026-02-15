@@ -1,7 +1,7 @@
 from base_bot import NaverBaseBot
 from blog_actions import get_post_content, load_comments, write_reply
 from comment_ai import CommentGenerator
-from utils import HumanDelay
+from utils import HumanDelay, random_sleep, maybe_idle, DAILY_ACTION_LIMIT
 import asyncio
 import re
 from datetime import date, datetime, timedelta
@@ -42,7 +42,7 @@ class ReplyBot(NaverBaseBot):
             self.log(f"PostList 페이지 {page_num} 접속...")
             await self.page.goto(url)
             await HumanDelay.page_load()
-            await asyncio.sleep(3)
+            await random_sleep(2.0, 4.0)
 
             rows = await self.page.query_selector_all("table.blog2_categorylist tr")
             if not rows:
@@ -149,13 +149,18 @@ class ReplyBot(NaverBaseBot):
     async def _process_comments_on_page(self, main_frame, my_blog_id: str,
                                          post_content: dict, log_no: str,
                                          ai_generator: CommentGenerator,
-                                         deferred: list) -> tuple:
+                                         deferred: list,
+                                         current_total: int = 0) -> tuple:
         reply_count = 0
         skip_count = 0
 
         comments = await main_frame.query_selector_all("li.u_cbox_comment")
         for c in comments:
             if not self.is_running:
+                break
+
+            if (current_total + reply_count) >= DAILY_ACTION_LIMIT:
+                self.log(f"    일일 액션 제한({DAILY_ACTION_LIMIT}건) 도달 → 중단")
                 break
 
             info = await self._parse_data_info(c)
@@ -187,7 +192,7 @@ class ReplyBot(NaverBaseBot):
                 skip_count += 1
                 continue
 
-            generated = ai_generator.generate_reply(
+            generated = await ai_generator.generate_reply(
                 post_content["title"], post_content["body"], comment_text
             )
 
@@ -259,6 +264,10 @@ class ReplyBot(NaverBaseBot):
                     self.log("사용자에 의해 중단됨")
                     break
 
+                if total_replies >= DAILY_ACTION_LIMIT:
+                    self.log(f"\n일일 액션 제한({DAILY_ACTION_LIMIT}건) 도달 → 중단")
+                    break
+
                 log_no = post["log_no"]
                 self.log(f"\n[{i+1}/{total_posts}] {post['title'][:50]} ({post['date']})")
 
@@ -275,9 +284,9 @@ class ReplyBot(NaverBaseBot):
                     continue
 
                 await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await asyncio.sleep(1)
+                await random_sleep(0.8, 2.0)
                 await main_frame.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                await asyncio.sleep(2)
+                await random_sleep(1.5, 3.0)
 
                 loaded = await load_comments(main_frame, self.log)
                 if not loaded:
@@ -290,14 +299,15 @@ class ReplyBot(NaverBaseBot):
                 )
                 if first_page_btn:
                     await first_page_btn.evaluate("el => el.click()")
-                    await asyncio.sleep(2)
+                    await random_sleep(1.5, 3.0)
 
                 comment_page = 1
                 while self.is_running:
                     self.log(f"  댓글 페이지 {comment_page}")
 
                     replies, skips = await self._process_comments_on_page(
-                        main_frame, blog_id, content, log_no, ai_generator, all_deferred
+                        main_frame, blog_id, content, log_no, ai_generator, all_deferred,
+                        current_total=total_replies
                     )
                     total_replies += replies
                     total_skips += skips
@@ -309,19 +319,24 @@ class ReplyBot(NaverBaseBot):
                         break
 
                     await next_page_btn.evaluate("el => el.click()")
-                    await asyncio.sleep(2)
+                    await random_sleep(1.5, 3.0)
                     comment_page += 1
 
                 await HumanDelay.between_requests()
+                await maybe_idle(self.log)
 
             # 보류 목록 재시도
-            if all_deferred and self.is_running:
+            if all_deferred and self.is_running and total_replies < DAILY_ACTION_LIMIT:
                 self.log(f"\n{'=' * 50}")
                 self.log(f"보류 목록 재시도: {len(all_deferred)}건")
                 self.log("=" * 50)
 
                 for i, item in enumerate(all_deferred):
                     if not self.is_running:
+                        break
+
+                    if total_replies >= DAILY_ACTION_LIMIT:
+                        self.log(f"\n일일 액션 제한({DAILY_ACTION_LIMIT}건) 도달 → 중단")
                         break
 
                     self.log(f"\n[보류 {i+1}/{len(all_deferred)}] {item['nick']} (댓글#{item['comment_no']})")
@@ -337,9 +352,9 @@ class ReplyBot(NaverBaseBot):
                         continue
 
                     await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    await asyncio.sleep(1)
+                    await random_sleep(0.8, 2.0)
                     await main_frame.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                    await asyncio.sleep(2)
+                    await random_sleep(1.5, 3.0)
 
                     loaded = await load_comments(main_frame, self.log)
                     if not loaded:
@@ -354,7 +369,7 @@ class ReplyBot(NaverBaseBot):
                         total_skips += 1
                         continue
 
-                    generated = ai_generator.generate_reply(
+                    generated = await ai_generator.generate_reply(
                         item["post_content"]["title"],
                         item["post_content"]["body"],
                         item["comment_text"],
