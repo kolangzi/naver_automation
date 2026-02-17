@@ -7,7 +7,7 @@ from blog_actions import (
     write_comment,
 )
 from comment_ai import CommentGenerator
-from utils import HumanDelay, random_sleep, maybe_idle, DAILY_ACTION_LIMIT
+from utils import HumanDelay, random_sleep, maybe_idle, DAILY_ACTION_LIMIT, simulate_reading
 import asyncio
 import re
 from typing import Callable
@@ -153,7 +153,7 @@ class BuddyCommentBot(NaverBaseBot):
             cutoff_date = date.today().strftime("%Y-%m-%d")
 
         try:
-            await self.start_browser()
+            await self.start_browser(user_id)
             await self.ensure_login(user_id, password)
 
             blog_id = user_id
@@ -254,6 +254,9 @@ class BuddyCommentBot(NaverBaseBot):
                     skip_count += 1
                     continue
 
+                body_len = len(content.get("body", "")) if content else 0
+                await simulate_reading(body_len, self.log)
+
                 await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                 await random_sleep(0.8, 2.0)
                 await main_frame.evaluate("window.scrollTo(0, document.body.scrollHeight)")
@@ -279,10 +282,6 @@ class BuddyCommentBot(NaverBaseBot):
                         continue
                 else:
                     self.log(f"  글 내용 없음 - skip")
-                    skip_count += 1
-                    continue
-
-                if not comment:
                     skip_count += 1
                     continue
 
@@ -328,6 +327,9 @@ class BuddyCommentBot(NaverBaseBot):
                         skip_count += 1
                         continue
 
+                    body_len = len(content.get("body", "")) if content else 0
+                    await simulate_reading(body_len, self.log)
+
                     await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                     await random_sleep(0.8, 2.0)
                     await main_frame.evaluate("window.scrollTo(0, document.body.scrollHeight)")
@@ -351,10 +353,6 @@ class BuddyCommentBot(NaverBaseBot):
                             continue
                     else:
                         self.log(f"  글 내용 없음 - skip")
-                        skip_count += 1
-                        continue
-
-                    if not comment:
                         skip_count += 1
                         continue
 

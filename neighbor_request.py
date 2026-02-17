@@ -268,7 +268,7 @@ class NeighborRequestBot(NaverBaseBot):
         self.is_running = True
 
         try:
-            await self.start_browser()
+            await self.start_browser(user_id)
             await self.ensure_login(user_id, password)
 
             await self.click_sympathy(blog_url)

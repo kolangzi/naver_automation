@@ -1,10 +1,10 @@
 from base_bot import NaverBaseBot
 from blog_actions import get_post_content, load_comments, write_reply
 from comment_ai import CommentGenerator
-from utils import HumanDelay, random_sleep, maybe_idle, DAILY_ACTION_LIMIT
+from utils import HumanDelay, random_sleep, maybe_idle, DAILY_ACTION_LIMIT, simulate_reading
 import asyncio
 import re
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Callable, List, Optional
 
 
@@ -235,7 +235,7 @@ class ReplyBot(NaverBaseBot):
             cutoff_date = date.today().strftime("%Y-%m-%d")
 
         try:
-            await self.start_browser()
+            await self.start_browser(user_id)
             await self.ensure_login(user_id, password)
 
             self.log("=" * 50)
@@ -282,6 +282,9 @@ class ReplyBot(NaverBaseBot):
                     self.log(f"  mainFrame 못 찾음 - skip")
                     total_skips += 1
                     continue
+
+                body_len = len(content.get("body", "")) if content else 0
+                await simulate_reading(body_len, self.log)
 
                 await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                 await random_sleep(0.8, 2.0)
@@ -350,6 +353,9 @@ class ReplyBot(NaverBaseBot):
                         self.log(f"  mainFrame 못 찾음 - skip")
                         total_skips += 1
                         continue
+
+                    body_len = len(content.get("body", "")) if content else 0
+                    await simulate_reading(body_len, self.log)
 
                     await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                     await random_sleep(0.8, 2.0)

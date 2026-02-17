@@ -1,7 +1,8 @@
-from playwright.async_api import async_playwright, Page, Browser
+from playwright.async_api import async_playwright, Page, BrowserContext
 from playwright_stealth import Stealth
 from utils import HumanDelay, human_type
 import asyncio
+import os
 import random
 from typing import Callable, Optional
 
@@ -16,30 +17,34 @@ _USER_AGENTS = [
 
 class NaverBaseBot:
     def __init__(self, log_callback: Callable[[str], None] = print):
-        self.browser: Optional[Browser] = None
+        self.context: Optional[BrowserContext] = None
         self.page: Optional[Page] = None
         self.playwright = None
         self.log = log_callback
         self.is_running = False
 
-    async def start_browser(self):
+    async def start_browser(self, user_id: str = "default"):
+        profile_dir = os.path.join(
+            os.path.expanduser("~"), ".naver_automation", "profiles", user_id
+        )
+        os.makedirs(profile_dir, exist_ok=True)
+
         self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(
+        user_agent = random.choice(_USER_AGENTS)
+        self.context = await self.playwright.chromium.launch_persistent_context(
+            user_data_dir=profile_dir,
             headless=False,
             args=[
                 '--disable-blink-features=AutomationControlled',
                 '--no-sandbox',
                 '--disable-accelerator-table',
-            ]
-        )
-        user_agent = random.choice(_USER_AGENTS)
-        context = await self.browser.new_context(
+            ],
             viewport={'width': 1280, 'height': 900},
             user_agent=user_agent,
             locale='ko-KR',
             timezone_id='Asia/Seoul',
         )
-        self.page = await context.new_page()
+        self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
 
         stealth = Stealth()
         await stealth.apply_stealth_async(self.page)
@@ -50,11 +55,11 @@ class NaverBaseBot:
                 e.returnValue = '';
             });
         """)
-        self.log("브라우저 시작됨")
+        self.log(f"브라우저 시작됨 (프로필: {user_id})")
 
     async def close_browser(self):
-        if self.browser:
-            await self.browser.close()
+        if self.context:
+            await self.context.close()
         if self.playwright:
             await self.playwright.stop()
         self.log("브라우저 종료됨")

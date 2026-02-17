@@ -15,19 +15,9 @@ class HumanDelay:
         await asyncio.sleep(random.uniform(0.5, 2.0))
 
     @staticmethod
-    async def after_popup():
-        """팝업 처리 후 대기 (1~3초)"""
-        await asyncio.sleep(random.uniform(1.0, 3.0))
-
-    @staticmethod
     async def between_requests():
         """이웃 신청 간 대기 (2.0~5.0초)"""
         await asyncio.sleep(random.uniform(2.0, 5.0))
-
-    @staticmethod
-    async def type_char():
-        """글자 입력 간 대기 (50~200ms)"""
-        await asyncio.sleep(random.uniform(0.05, 0.20))
 
 
 async def random_sleep(min_sec: float, max_sec: float):
@@ -45,6 +35,18 @@ async def maybe_idle(log=None):
 
 
 DAILY_ACTION_LIMIT = 50  # 계정당 일일 액션(댓글/대댓글) 최대 수
+
+
+async def simulate_reading(body_length: int = 0, log=None):
+    if body_length > 1000:
+        wait = random.uniform(8.0, 15.0)
+    elif body_length > 300:
+        wait = random.uniform(5.0, 10.0)
+    else:
+        wait = random.uniform(3.0, 7.0)
+    if log:
+        log(f"  [읽는 중] {wait:.1f}초 체류...")
+    await asyncio.sleep(wait)
 
 
 async def human_type(page, selector: str, text: str):

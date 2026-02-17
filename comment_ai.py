@@ -8,7 +8,6 @@ class CommentGenerator:
     def __init__(self, api_key: str):
         self.client = genai.Client(api_key=api_key)
         self.model = 'gemini-3-flash-preview'
-        self.reply_model = 'gemini-3-flash-preview'
         self._last_request_time = 0.0
         self._min_interval = 4.0
 
@@ -91,7 +90,7 @@ class CommentGenerator:
                 self._last_request_time = time.time()
 
                 response = self.client.models.generate_content(
-                    model=self.reply_model,
+                    model=self.model,
                     contents=prompt
                 )
                 if not response.text:

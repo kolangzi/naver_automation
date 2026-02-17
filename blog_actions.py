@@ -1,4 +1,3 @@
-import asyncio
 import re
 from typing import Callable, Optional
 from utils import random_sleep
@@ -159,6 +158,22 @@ async def write_reply(main_frame, comment_no: str, reply_text: str,
             if f"commentNo:'{comment_no}'" in data_info:
                 target_comment = c
                 break
+
+        if not target_comment:
+            page_btns = await main_frame.query_selector_all(
+                ".u_cbox_paginate a.u_cbox_page"
+            )
+            for pb in page_btns:
+                await pb.evaluate("el => el.click()")
+                await random_sleep(1.5, 3.0)
+                comments = await main_frame.query_selector_all("li.u_cbox_comment")
+                for c in comments:
+                    data_info = await c.get_attribute("data-info") or ""
+                    if f"commentNo:'{comment_no}'" in data_info:
+                        target_comment = c
+                        break
+                if target_comment:
+                    break
 
         if not target_comment:
             log(f"  댓글 #{comment_no} 요소 못 찾음")
