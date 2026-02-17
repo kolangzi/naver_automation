@@ -37,7 +37,6 @@ class NaverBaseBot:
             args=[
                 '--disable-blink-features=AutomationControlled',
                 '--no-sandbox',
-                '--disable-accelerator-table',
             ],
             viewport={'width': 1280, 'height': 900},
             user_agent=user_agent,
@@ -49,13 +48,8 @@ class NaverBaseBot:
         stealth = Stealth()
         await stealth.apply_stealth_async(self.page)
 
-        await self.page.add_init_script("""
-            window.addEventListener('beforeunload', function(e) {
-                e.preventDefault();
-                e.returnValue = '';
-            });
-        """)
         self.log(f"브라우저 시작됨 (프로필: {user_id})")
+        self.log("⚠️  주의: 실행 중 Cmd+W / Ctrl+W를 누르지 마세요. 브라우저가 종료됩니다.")
 
     async def close_browser(self):
         if self.context:
