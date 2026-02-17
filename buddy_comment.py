@@ -136,7 +136,7 @@ class BuddyCommentBot(NaverBaseBot):
         self.log("  더 이상 다음 페이지 없음")
         return False
 
-    async def run_buddy_comment(self, user_id: str, password: str,
+    async def run_buddy_comment(self, user_id: str,
                                 gemini_api_key: str = "",
                                 group_name: str = "이웃1",
                                 cutoff_date: str = "",
@@ -154,7 +154,7 @@ class BuddyCommentBot(NaverBaseBot):
 
         try:
             await self.start_browser(user_id)
-            await self.ensure_login(user_id, password)
+            await self.ensure_login(user_id)
 
             blog_id = user_id
 

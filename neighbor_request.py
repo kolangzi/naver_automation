@@ -261,7 +261,7 @@ class NeighborRequestBot(NaverBaseBot):
             await HumanDelay.page_load()
             await random_sleep(3.0, 6.0)
 
-    async def run(self, blog_url: str, user_id: str, password: str,
+    async def run(self, blog_url: str, user_id: str,
                   progress_callback: Callable[[int, int], None] = None,
                   neighbor_message: str = "블로그 글 잘 봤습니다. 서로이웃 신청드려요!",
                   max_success: int = 100):
@@ -269,7 +269,7 @@ class NeighborRequestBot(NaverBaseBot):
 
         try:
             await self.start_browser(user_id)
-            await self.ensure_login(user_id, password)
+            await self.ensure_login(user_id)
 
             await self.click_sympathy(blog_url)
 

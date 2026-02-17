@@ -7,7 +7,7 @@ from typing import Optional
 class CommentGenerator:
     def __init__(self, api_key: str):
         self.client = genai.Client(api_key=api_key)
-        self.model = 'gemini-3-flash-preview'
+        self.model = 'gemini-2.5-flash'
         self._last_request_time = 0.0
         self._min_interval = 4.0
 

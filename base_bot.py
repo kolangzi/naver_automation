@@ -1,6 +1,6 @@
 from playwright.async_api import async_playwright, Page, BrowserContext
 from playwright_stealth import Stealth
-from utils import HumanDelay, human_type
+from utils import HumanDelay
 import asyncio
 import os
 import random
@@ -70,42 +70,40 @@ class NaverBaseBot:
         login_btn = await self.page.query_selector('a.MyView-module__link_login___HpHMW')
         return login_btn is None
 
-    async def login(self, user_id: str, password: str) -> bool:
-        try:
-            self.log("로그인 시도 중...")
-            await self.page.goto('https://nid.naver.com/nidlogin.login')
-            await HumanDelay.page_load()
+    async def ensure_login(self, user_id: str):
+        if await self.check_login_status():
+            self.log("로그인 상태 확인됨 (기존 세션 유지)")
+            return
 
-            await HumanDelay.before_click()
-            await human_type(self.page, '#id', user_id)
+        self.log("로그인이 필요합니다. 브라우저에서 직접 로그인해주세요.")
+        await self.page.goto('https://nid.naver.com/nidlogin.login')
+        await HumanDelay.page_load()
 
-            await HumanDelay.before_click()
-            await human_type(self.page, '#pw', password)
+        id_input = await self.page.query_selector('#id')
+        if id_input:
+            await id_input.evaluate('(el, uid) => { el.value = uid; el.dispatchEvent(new Event("input", {bubbles:true})); }', user_id)
+            self.log(f"아이디 자동 입력됨: {user_id}")
+        self.log("비밀번호를 입력하고 3분 이내에 로그인을 완료해주세요.")
 
-            await HumanDelay.before_click()
-            await self.page.click('#log\\.login')
+        max_wait = 180
+        poll_interval = 5
+        elapsed = 0
+        while elapsed < max_wait:
+            await asyncio.sleep(poll_interval)
+            elapsed += poll_interval
+            current_url = self.page.url
+            if 'nidlogin.login' not in current_url:
+                if await self.check_login_status():
+                    self.log("로그인 성공!")
+                    return
+                else:
+                    await self.page.goto('https://nid.naver.com/nidlogin.login')
+                    await HumanDelay.page_load()
+            remaining = max_wait - elapsed
+            if remaining > 0 and elapsed % 15 == 0:
+                self.log(f"로그인 대기 중... (남은 시간: {remaining}초)")
 
-            await HumanDelay.page_load()
-
-            if await self.check_login_status():
-                self.log("로그인 성공!")
-                return True
-            else:
-                self.log("로그인 실패 - 캡차 또는 인증 필요할 수 있음")
-                return False
-
-        except Exception as e:
-            self.log(f"로그인 오류: {str(e)}")
-            return False
-
-    async def ensure_login(self, user_id: str, password: str):
-        if not await self.check_login_status():
-            if not await self.login(user_id, password):
-                self.log("로그인에 실패했습니다. 수동으로 로그인해주세요.")
-                self.log("30초 내에 수동 로그인을 완료해주세요...")
-                await asyncio.sleep(30)
-                if not await self.check_login_status():
-                    raise Exception("로그인 실패")
+        raise Exception("로그인 시간 초과 (3분). 다시 시도해주세요.")
 
     def _get_main_frame(self):
         for f in self.page.frames:

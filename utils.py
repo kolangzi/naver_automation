@@ -47,11 +47,3 @@ async def simulate_reading(body_length: int = 0, log=None):
     if log:
         log(f"  [읽는 중] {wait:.1f}초 체류...")
     await asyncio.sleep(wait)
-
-
-async def human_type(page, selector: str, text: str):
-    """인간처럼 타이핑하는 함수"""
-    element = await page.wait_for_selector(selector)
-    await element.click()
-    for char in text:
-        await element.type(char, delay=random.randint(50, 150))

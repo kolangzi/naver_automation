@@ -2,7 +2,6 @@ from base_bot import NaverBaseBot
 from blog_actions import get_post_content, load_comments, write_reply
 from comment_ai import CommentGenerator
 from utils import HumanDelay, random_sleep, maybe_idle, DAILY_ACTION_LIMIT, simulate_reading
-import asyncio
 import re
 from datetime import date, timedelta
 from typing import Callable, List, Optional
@@ -220,13 +219,13 @@ class ReplyBot(NaverBaseBot):
 
         return reply_count, skip_count
 
-    async def run_reply(self, user_id: str, password: str,
+    async def run_reply(self, user_id: str,
                         gemini_api_key: str, blog_id: str = "",
                         cutoff_date: str = "",
                         progress_callback: Callable[[int, int], None] = None):
         self.is_running = True
         ai_generator = CommentGenerator(gemini_api_key)
-        self.log("AI 대댓글 생성 모드 (Gemini - gemini-3-flash-preview)")
+        self.log("AI 대댓글 생성 모드 (Gemini)")
 
         if not blog_id:
             blog_id = user_id
@@ -236,7 +235,7 @@ class ReplyBot(NaverBaseBot):
 
         try:
             await self.start_browser(user_id)
-            await self.ensure_login(user_id, password)
+            await self.ensure_login(user_id)
 
             self.log("=" * 50)
             self.log("Phase 1: 내 블로그 글 수집")
