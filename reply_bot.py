@@ -1,7 +1,7 @@
 from base_bot import NaverBaseBot
 from blog_actions import get_post_content, load_comments, write_reply
 from comment_ai import CommentGenerator
-from utils import HumanDelay, random_sleep, maybe_idle, DAILY_ACTION_LIMIT, simulate_reading
+from utils import HumanDelay, random_sleep, maybe_idle, DAILY_ACTION_LIMIT
 import re
 from datetime import date, timedelta
 from typing import Callable, List, Optional
@@ -31,6 +31,7 @@ class ReplyBot(NaverBaseBot):
 
     async def _collect_posts_from_postlist(self, blog_id: str, cutoff_date: str) -> List[dict]:
         posts = []
+        seen_log_nos = set()
         page_num = 1
 
         while self.is_running:
@@ -82,6 +83,10 @@ class ReplyBot(NaverBaseBot):
                 log_no = m.group(1)
                 title_text = (await link.inner_text()).strip()
 
+                if log_no in seen_log_nos:
+                    continue
+                seen_log_nos.add(log_no)
+
                 posts.append({
                     "log_no": log_no,
                     "title": title_text,
@@ -89,7 +94,7 @@ class ReplyBot(NaverBaseBot):
                 })
                 new_posts += 1
 
-            self.log(f"  {new_posts}개 글 수집 (날짜 ≥ {cutoff_date})")
+            self.log(f"  페이지 {page_num}: {new_posts}개 글 수집 (누적 {len(posts)}개, 날짜 ≥ {cutoff_date})")
 
             if found_old:
                 self.log(f"기준일({cutoff_date})보다 오래된 글 발견 → 수집 종료")
@@ -149,12 +154,37 @@ class ReplyBot(NaverBaseBot):
                                          post_content: dict, log_no: str,
                                          ai_generator: CommentGenerator,
                                          deferred: list,
+                                         replied_set: set,
                                          current_total: int = 0) -> tuple:
         reply_count = 0
         skip_count = 0
 
+        # Phase A: comment_no + nick 목록만 먼저 수집 (stale handle 방지)
+        comment_entries = []
         comments = await main_frame.query_selector_all("li.u_cbox_comment")
         for c in comments:
+            info = await self._parse_data_info(c)
+            if info.get("replyLevel") != "1":
+                continue
+            comment_no = info.get("commentNo", "")
+            if not comment_no:
+                continue
+            nick_el = await c.query_selector(".u_cbox_nick")
+            nick = comment_no
+            if nick_el:
+                nick = (await nick_el.inner_text()).strip()
+            content_el = await c.query_selector(".u_cbox_contents")
+            comment_text = ""
+            if content_el:
+                comment_text = (await content_el.inner_text()).strip()
+            comment_entries.append({
+                "comment_no": comment_no,
+                "nick": nick,
+                "comment_text": comment_text,
+            })
+
+        # Phase B: 수집된 목록 순회하며 개별 처리 (매번 fresh DOM query)
+        for entry in comment_entries:
             if not self.is_running:
                 break
 
@@ -162,30 +192,22 @@ class ReplyBot(NaverBaseBot):
                 self.log(f"    일일 액션 제한({DAILY_ACTION_LIMIT}건) 도달 → 중단")
                 break
 
-            info = await self._parse_data_info(c)
-            if info.get("replyLevel") != "1":
-                continue
+            comment_no = entry["comment_no"]
+            nick = entry["nick"]
+            comment_text = entry["comment_text"]
 
-            comment_no = info.get("commentNo", "")
-            if not comment_no:
+            # in-memory set으로 중복 방지
+            if comment_no in replied_set:
+                self.log(f"    [{nick}] 이번 실행에서 이미 처리됨 - skip")
+                skip_count += 1
                 continue
-
-            nick_el = await c.query_selector(".u_cbox_nick")
-            nick = comment_no
-            if nick_el:
-                nick = (await nick_el.inner_text()).strip()
 
             already = await self._check_already_replied(main_frame, comment_no, my_blog_id)
             if already:
                 self.log(f"    [{nick}] 이미 답글 있음 - skip")
+                replied_set.add(comment_no)
                 skip_count += 1
                 continue
-
-            content_el = await c.query_selector(".u_cbox_contents")
-            if not content_el:
-                skip_count += 1
-                continue
-            comment_text = (await content_el.inner_text()).strip()
 
             if not comment_text:
                 skip_count += 1
@@ -212,6 +234,7 @@ class ReplyBot(NaverBaseBot):
             result = await write_reply(main_frame, comment_no, generated, self.log)
             if result:
                 reply_count += 1
+                replied_set.add(comment_no)
             else:
                 skip_count += 1
 
@@ -257,6 +280,7 @@ class ReplyBot(NaverBaseBot):
             total_replies = 0
             total_skips = 0
             all_deferred = []
+            replied_set = set()
 
             for i, post in enumerate(posts):
                 if not self.is_running:
@@ -282,9 +306,6 @@ class ReplyBot(NaverBaseBot):
                     total_skips += 1
                     continue
 
-                body_len = len(content.get("body", "")) if content else 0
-                await simulate_reading(body_len, self.log)
-
                 await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                 await random_sleep(0.8, 2.0)
                 await main_frame.evaluate("window.scrollTo(0, document.body.scrollHeight)")
@@ -309,7 +330,7 @@ class ReplyBot(NaverBaseBot):
 
                     replies, skips = await self._process_comments_on_page(
                         main_frame, blog_id, content, log_no, ai_generator, all_deferred,
-                        current_total=total_replies
+                        replied_set=replied_set, current_total=total_replies
                     )
                     total_replies += replies
                     total_skips += skips
@@ -343,6 +364,11 @@ class ReplyBot(NaverBaseBot):
 
                     self.log(f"\n[보류 {i+1}/{len(all_deferred)}] {item['nick']} (댓글#{item['comment_no']})")
 
+                    if item["comment_no"] in replied_set:
+                        self.log(f"  이번 실행에서 이미 처리됨 - skip")
+                        total_skips += 1
+                        continue
+
                     content, main_frame = await get_post_content(
                         self.page, item["blog_id"], item["log_no"],
                         self.log, self._get_main_frame
@@ -352,9 +378,6 @@ class ReplyBot(NaverBaseBot):
                         self.log(f"  mainFrame 못 찾음 - skip")
                         total_skips += 1
                         continue
-
-                    body_len = len(content.get("body", "")) if content else 0
-                    await simulate_reading(body_len, self.log)
 
                     await self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                     await random_sleep(0.8, 2.0)
