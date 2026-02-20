@@ -27,9 +27,9 @@ class NaverNeighborApp(ctk.CTk):
             self, text="네이버 서로이웃 매니저",
             font=ctk.CTkFont(size=24, weight="bold")
         )
-        title_label.pack(pady=15)
+        title_label.pack(pady=10)
 
-        self.tabview = ctk.CTkTabview(self, width=560, height=480)
+        self.tabview = ctk.CTkTabview(self, width=560, height=340)
         self.tabview.pack(padx=20, pady=5)
 
         self.tabview.add("서로이웃 신청")
@@ -40,55 +40,12 @@ class NaverNeighborApp(ctk.CTk):
         self._create_tab2()
         self._create_tab3()
 
-        self.progress_label = ctk.CTkLabel(self, text="대기 중...")
-        self.progress_label.pack(pady=5)
-
-        self.progress_bar = ctk.CTkProgressBar(self, width=500)
-        self.progress_bar.pack(pady=5)
-        self.progress_bar.set(0)
-
-        log_label = ctk.CTkLabel(self, text="실행 로그", font=ctk.CTkFont(weight="bold"))
-        log_label.pack(pady=(10, 5))
-
-        self.log_textbox = ctk.CTkTextbox(self, width=550, height=250)
-        self.log_textbox.pack(padx=20, pady=10)
-
-    def _create_tab1(self):
-        tab = self.tabview.tab("서로이웃 신청")
-
-        input_frame = ctk.CTkFrame(tab)
-        input_frame.pack(padx=10, pady=5, fill="x")
-
-        url_label = ctk.CTkLabel(input_frame, text="블로그 URL:")
-        url_label.grid(row=0, column=0, padx=10, pady=8, sticky="w")
-        self.url_entry = ctk.CTkEntry(input_frame, width=380, placeholder_text="https://blog.naver.com/...")
-        self.url_entry.grid(row=0, column=1, padx=10, pady=8)
-
-        id_label = ctk.CTkLabel(input_frame, text="네이버 ID:")
-        id_label.grid(row=1, column=0, padx=10, pady=8, sticky="w")
-        self.id_entry = ctk.CTkEntry(input_frame, width=380, placeholder_text="lizidemarron")
-        self.id_entry.grid(row=1, column=1, padx=10, pady=8)
-
-        neighbor_msg_label = ctk.CTkLabel(input_frame, text="신청 메시지:")
-        neighbor_msg_label.grid(row=2, column=0, padx=10, pady=8, sticky="w")
-        self.neighbor_msg_entry = ctk.CTkEntry(
-            input_frame, width=380,
-            placeholder_text="블로그 글 잘 봤습니다. 서로이웃 신청드려요!"
-        )
-        self.neighbor_msg_entry.grid(row=2, column=1, padx=10, pady=8)
-
-        max_label = ctk.CTkLabel(input_frame, text="최대 신청 수:")
-        max_label.grid(row=3, column=0, padx=10, pady=8, sticky="w")
-        self.max_success_entry = ctk.CTkEntry(input_frame, width=380, placeholder_text="100")
-        self.max_success_entry.insert(0, "100")
-        self.max_success_entry.grid(row=3, column=1, padx=10, pady=8)
-
-        btn_frame = ctk.CTkFrame(tab, fg_color="transparent")
-        btn_frame.pack(pady=10)
+        btn_frame = ctk.CTkFrame(self, fg_color="transparent")
+        btn_frame.pack(pady=5)
 
         self.start_btn = ctk.CTkButton(
             btn_frame, text="시작", width=150, height=40,
-            command=self._on_start, fg_color="#2E8B57", hover_color="#256E4A",
+            command=self._on_start_dispatch, fg_color="#2E8B57", hover_color="#256E4A",
             font=ctk.CTkFont(size=16, weight="bold")
         )
         self.start_btn.grid(row=0, column=0, padx=10)
@@ -100,118 +57,127 @@ class NaverNeighborApp(ctk.CTk):
         )
         self.stop_btn.grid(row=0, column=1, padx=10)
 
+        self.progress_label = ctk.CTkLabel(self, text="대기 중...")
+        self.progress_label.pack(pady=3)
+
+        self.progress_bar = ctk.CTkProgressBar(self, width=500)
+        self.progress_bar.pack(pady=3)
+        self.progress_bar.set(0)
+
+        log_label = ctk.CTkLabel(self, text="실행 로그", font=ctk.CTkFont(weight="bold"))
+        log_label.pack(pady=(5, 3))
+
+        self.log_textbox = ctk.CTkTextbox(self, width=550)
+        self.log_textbox.pack(padx=20, pady=(5, 15), fill="both", expand=True)
+
+    def _create_tab1(self):
+        tab = self.tabview.tab("서로이웃 신청")
+
+        input_frame = ctk.CTkFrame(tab)
+        input_frame.pack(padx=10, pady=2, fill="x")
+
+        url_label = ctk.CTkLabel(input_frame, text="블로그 URL:")
+        url_label.grid(row=0, column=0, padx=10, pady=5, sticky="w")
+        self.url_entry = ctk.CTkEntry(input_frame, width=380, placeholder_text="https://blog.naver.com/...")
+        self.url_entry.grid(row=0, column=1, padx=10, pady=5)
+
+        id_label = ctk.CTkLabel(input_frame, text="네이버 ID:")
+        id_label.grid(row=1, column=0, padx=10, pady=5, sticky="w")
+        self.id_entry = ctk.CTkEntry(input_frame, width=380, placeholder_text="lizidemarron")
+        self.id_entry.grid(row=1, column=1, padx=10, pady=5)
+
+        neighbor_msg_label = ctk.CTkLabel(input_frame, text="신청 메시지:")
+        neighbor_msg_label.grid(row=2, column=0, padx=10, pady=5, sticky="w")
+        self.neighbor_msg_entry = ctk.CTkEntry(
+            input_frame, width=380,
+            placeholder_text="블로그 글 잘 봤습니다. 서로이웃 신청드려요!"
+        )
+        self.neighbor_msg_entry.grid(row=2, column=1, padx=10, pady=5)
+
+        max_label = ctk.CTkLabel(input_frame, text="최대 신청 수:")
+        max_label.grid(row=3, column=0, padx=10, pady=5, sticky="w")
+        self.max_success_entry = ctk.CTkEntry(input_frame, width=380, placeholder_text="100")
+        self.max_success_entry.insert(0, "100")
+        self.max_success_entry.grid(row=3, column=1, padx=10, pady=5)
+
     def _create_tab2(self):
         tab = self.tabview.tab("서로이웃 댓글")
 
         input_frame = ctk.CTkFrame(tab)
-        input_frame.pack(padx=10, pady=5, fill="x")
+        input_frame.pack(padx=10, pady=2, fill="x")
 
         id_label = ctk.CTkLabel(input_frame, text="네이버 ID:")
-        id_label.grid(row=0, column=0, padx=10, pady=8, sticky="w")
+        id_label.grid(row=0, column=0, padx=10, pady=5, sticky="w")
         self.t2_id_entry = ctk.CTkEntry(input_frame, width=380, placeholder_text="lizidemarron")
-        self.t2_id_entry.grid(row=0, column=1, padx=10, pady=8)
+        self.t2_id_entry.grid(row=0, column=1, padx=10, pady=5)
 
         api_key_label = ctk.CTkLabel(input_frame, text="Gemini API 키:")
-        api_key_label.grid(row=1, column=0, padx=10, pady=8, sticky="w")
+        api_key_label.grid(row=1, column=0, padx=10, pady=5, sticky="w")
         self.t2_api_key_entry = ctk.CTkEntry(
             input_frame, width=380,
             placeholder_text="Gemini API 키 입력 (필수)"
         )
-        self.t2_api_key_entry.grid(row=1, column=1, padx=10, pady=8)
+        self.t2_api_key_entry.grid(row=1, column=1, padx=10, pady=5)
 
         group_label = ctk.CTkLabel(input_frame, text="그룹 이름:")
-        group_label.grid(row=2, column=0, padx=10, pady=8, sticky="w")
+        group_label.grid(row=2, column=0, padx=10, pady=5, sticky="w")
         self.t2_group_entry = ctk.CTkEntry(input_frame, width=380, placeholder_text="이웃1")
-        self.t2_group_entry.grid(row=2, column=1, padx=10, pady=8)
+        self.t2_group_entry.grid(row=2, column=1, padx=10, pady=5)
 
         date_label = ctk.CTkLabel(input_frame, text="기준 날짜:")
-        date_label.grid(row=3, column=0, padx=10, pady=8, sticky="w")
+        date_label.grid(row=3, column=0, padx=10, pady=5, sticky="w")
         self.t2_date_entry = ctk.CTkEntry(input_frame, width=380, placeholder_text="YYYY-MM-DD")
         self.t2_date_entry.insert(0, date.today().strftime("%Y-%m-%d"))
-        self.t2_date_entry.grid(row=3, column=1, padx=10, pady=8)
+        self.t2_date_entry.grid(row=3, column=1, padx=10, pady=5)
 
         sort_label = ctk.CTkLabel(input_frame, text="정렬 기준:")
-        sort_label.grid(row=4, column=0, padx=10, pady=8, sticky="w")
+        sort_label.grid(row=4, column=0, padx=10, pady=5, sticky="w")
         self.t2_sort_var = ctk.StringVar(value="업데이트순")
         self.t2_sort_menu = ctk.CTkOptionMenu(
             input_frame, width=380,
             values=["업데이트순", "이웃추가순"],
             variable=self.t2_sort_var
         )
-        self.t2_sort_menu.grid(row=4, column=1, padx=10, pady=8)
+        self.t2_sort_menu.grid(row=4, column=1, padx=10, pady=5)
 
         desc_label = ctk.CTkLabel(
             tab, text="선택한 정렬/날짜 기준으로 서로이웃의 최신글에 AI 댓글을 남깁니다.",
             font=ctk.CTkFont(size=12),
             text_color="gray"
         )
-        desc_label.pack(pady=5)
-
-        btn_frame = ctk.CTkFrame(tab, fg_color="transparent")
-        btn_frame.pack(pady=10)
-
-        self.t2_start_btn = ctk.CTkButton(
-            btn_frame, text="시작", width=150, height=40,
-            command=self._on_start_buddy_comment, fg_color="#2E8B57", hover_color="#256E4A",
-            font=ctk.CTkFont(size=16, weight="bold")
-        )
-        self.t2_start_btn.grid(row=0, column=0, padx=10)
-
-        self.t2_stop_btn = ctk.CTkButton(
-            btn_frame, text="중지", width=150, height=40,
-            command=self._on_stop, fg_color="#C0392B", hover_color="#A33025",
-            state="disabled", font=ctk.CTkFont(size=16, weight="bold")
-        )
-        self.t2_stop_btn.grid(row=0, column=1, padx=10)
+        desc_label.pack(pady=2)
 
     def _create_tab3(self):
         tab = self.tabview.tab("대댓글")
 
         input_frame = ctk.CTkFrame(tab)
-        input_frame.pack(padx=10, pady=5, fill="x")
+        input_frame.pack(padx=10, pady=2, fill="x")
 
         id_label = ctk.CTkLabel(input_frame, text="네이버 ID:")
-        id_label.grid(row=0, column=0, padx=10, pady=8, sticky="w")
+        id_label.grid(row=0, column=0, padx=10, pady=5, sticky="w")
         self.t3_id_entry = ctk.CTkEntry(input_frame, width=380, placeholder_text="lizidemarron")
-        self.t3_id_entry.grid(row=0, column=1, padx=10, pady=8)
+        self.t3_id_entry.grid(row=0, column=1, padx=10, pady=5)
 
         api_key_label = ctk.CTkLabel(input_frame, text="Gemini API 키:")
-        api_key_label.grid(row=1, column=0, padx=10, pady=8, sticky="w")
+        api_key_label.grid(row=1, column=0, padx=10, pady=5, sticky="w")
         self.t3_api_key_entry = ctk.CTkEntry(
             input_frame, width=380,
             placeholder_text="Gemini API 키 입력 (필수)"
         )
-        self.t3_api_key_entry.grid(row=1, column=1, padx=10, pady=8)
+        self.t3_api_key_entry.grid(row=1, column=1, padx=10, pady=5)
 
         date_label = ctk.CTkLabel(input_frame, text="기준 날짜:")
-        date_label.grid(row=2, column=0, padx=10, pady=8, sticky="w")
+        date_label.grid(row=2, column=0, padx=10, pady=5, sticky="w")
         self.t3_date_entry = ctk.CTkEntry(input_frame, width=380, placeholder_text="YYYY-MM-DD")
         self.t3_date_entry.insert(0, date.today().strftime("%Y-%m-%d"))
-        self.t3_date_entry.grid(row=2, column=1, padx=10, pady=8)
+        self.t3_date_entry.grid(row=2, column=1, padx=10, pady=5)
 
         desc_label = ctk.CTkLabel(
             tab, text="내 블로그 글에 달린 댓글에 AI 대댓글을 남깁니다.",
             font=ctk.CTkFont(size=12),
             text_color="gray"
         )
-        desc_label.pack(pady=5)
-
-        btn_frame = ctk.CTkFrame(tab, fg_color="transparent")
-        btn_frame.pack(pady=10)
-
-        self.t3_start_btn = ctk.CTkButton(
-            btn_frame, text="시작", width=150, height=40,
-            command=self._on_start_reply, fg_color="#2E8B57", hover_color="#256E4A",
-            font=ctk.CTkFont(size=16, weight="bold")
-        )
-        self.t3_start_btn.grid(row=0, column=0, padx=10)
-
-        self.t3_stop_btn = ctk.CTkButton(
-            btn_frame, text="중지", width=150, height=40,
-            command=self._on_stop, fg_color="#C0392B", hover_color="#A33025",
-            state="disabled", font=ctk.CTkFont(size=16, weight="bold")
-        )
-        self.t3_stop_btn.grid(row=0, column=1, padx=10)
+        desc_label.pack(pady=2)
 
     def _log(self, message: str):
         self.log_textbox.insert("end", f"{message}\n")
@@ -227,10 +193,15 @@ class NaverNeighborApp(ctk.CTk):
         state_stop = "normal" if running else "disabled"
         self.start_btn.configure(state=state_start)
         self.stop_btn.configure(state=state_stop)
-        self.t2_start_btn.configure(state=state_start)
-        self.t2_stop_btn.configure(state=state_stop)
-        self.t3_start_btn.configure(state=state_start)
-        self.t3_stop_btn.configure(state=state_stop)
+
+    def _on_start_dispatch(self):
+        current_tab = self.tabview.get()
+        if current_tab == "서로이웃 신청":
+            self._on_start()
+        elif current_tab == "서로이웃 댓글":
+            self._on_start_buddy_comment()
+        elif current_tab == "대댓글":
+            self._on_start_reply()
 
     def _on_start(self):
         blog_url = self.url_entry.get().strip()
