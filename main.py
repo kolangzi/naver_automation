@@ -1,6 +1,7 @@
 import customtkinter as ctk
 import asyncio
 import threading
+import subprocess
 from datetime import date
 from neighbor_request import NeighborRequestBot
 from buddy_comment import BuddyCommentBot
@@ -43,13 +44,19 @@ class NaverNeighborApp(ctk.CTk):
         btn_frame = ctk.CTkFrame(self, fg_color="transparent")
         btn_frame.pack(pady=5)
 
-        self.auto_exit_var = ctk.BooleanVar(value=False)
-        self.auto_exit_cb = ctk.CTkCheckBox(
-            btn_frame, text="작업 완료시 프로그램 종료",
-            variable=self.auto_exit_var,
+        self.post_action_var = ctk.StringVar(value="없음")
+        post_action_label = ctk.CTkLabel(
+            btn_frame, text="완료 후:",
             font=ctk.CTkFont(size=13)
         )
-        self.auto_exit_cb.grid(row=0, column=2, padx=(20, 10))
+        post_action_label.grid(row=0, column=2, padx=(20, 5))
+        self.post_action_menu = ctk.CTkOptionMenu(
+            btn_frame, width=160,
+            values=["없음", "프로그램 종료", "잠자기 모드"],
+            variable=self.post_action_var,
+            font=ctk.CTkFont(size=13)
+        )
+        self.post_action_menu.grid(row=0, column=3, padx=(0, 10))
 
         self.start_btn = ctk.CTkButton(
             btn_frame, text="시작", width=150, height=40,
@@ -349,9 +356,15 @@ class NaverNeighborApp(ctk.CTk):
         self._log("중지 요청됨...")
 
     def _on_complete(self):
-        if self.auto_exit_var.get():
+        action = self.post_action_var.get()
+        if action == "프로그램 종료":
             self._log("작업 완료 — 프로그램을 종료합니다.")
             self.after(1500, self.destroy)
+            return
+        elif action == "잠자기 모드":
+            self._log("작업 완료 — 프로그램 종료 후 잠자기 모드로 진입합니다.")
+            subprocess.Popen(["bash", "-c", "sleep 4 && pmset sleepnow"])
+            self.after(2000, self.destroy)
             return
         self._set_running(False)
         self.progress_label.configure(text="완료!")
