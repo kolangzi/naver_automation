@@ -194,6 +194,14 @@ class NaverNeighborApp(ctk.CTk):
         )
         desc_label.pack(pady=2)
 
+        self.t3_dry_run_var = ctk.BooleanVar(value=False)
+        self.t3_dry_run_check = ctk.CTkCheckBox(
+            tab, text="DRY-RUN (실제 등록 없이 검증만)",
+            variable=self.t3_dry_run_var,
+            font=ctk.CTkFont(size=12)
+        )
+        self.t3_dry_run_check.pack(pady=2)
+
     def _log(self, message: str):
         self.log_textbox.insert("end", f"{message}\n")
         self.log_textbox.see("end")
@@ -268,6 +276,7 @@ class NaverNeighborApp(ctk.CTk):
         user_id = self.t3_id_entry.get().strip() or "lizidemarron"
         gemini_api_key = self.t3_api_key_entry.get().strip()
         cutoff_date = self.t3_date_entry.get().strip() or date.today().strftime("%Y-%m-%d")
+        dry_run = self.t3_dry_run_var.get()
 
         if not gemini_api_key:
             self._log("Gemini API 키를 입력해주세요!")
@@ -276,7 +285,7 @@ class NaverNeighborApp(ctk.CTk):
         self._set_running(True)
         thread = threading.Thread(
             target=self._run_reply_bot,
-            args=(user_id, gemini_api_key, cutoff_date)
+            args=(user_id, gemini_api_key, cutoff_date, dry_run)
         )
         thread.daemon = True
         thread.start()
@@ -329,7 +338,8 @@ class NaverNeighborApp(ctk.CTk):
             self.after(0, self._on_complete)
 
     def _run_reply_bot(self, user_id: str,
-                       gemini_api_key: str, cutoff_date: str):
+                       gemini_api_key: str, cutoff_date: str,
+                       dry_run: bool = False):
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
@@ -343,6 +353,7 @@ class NaverNeighborApp(ctk.CTk):
                     user_id,
                     gemini_api_key=gemini_api_key,
                     cutoff_date=cutoff_date,
+                    dry_run=dry_run,
                     progress_callback=lambda c, t: self.after(0, self._update_progress, c, t),
                 )
             )

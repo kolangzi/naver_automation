@@ -146,18 +146,34 @@ async def load_comments(main_frame, log: Callable[[str], None]) -> bool:
     return False
 
 
+async def _find_comment_element(main_frame, comment_no: str):
+    """data-info에서 commentNo가 일치하는 li.u_cbox_comment 요소를 찾는다.
+    따옴표 유무, 공백 등에 관계없이 매칭한다."""
+    comments = await main_frame.query_selector_all("li.u_cbox_comment")
+    for c in comments:
+        data_info = await c.get_attribute("data-info") or ""
+        # 다양한 포맷 대응: commentNo:'12345', commentNo: '12345', commentNo:12345
+        for kv in data_info.split(","):
+            kv = kv.strip()
+            if ":" not in kv:
+                continue
+            key, val = kv.split(":", 1)
+            if key.strip() == "commentNo" and val.strip().strip("'\"") == comment_no:
+                return c
+    return None
+
+
 async def write_reply(main_frame, comment_no: str, reply_text: str,
-                      log: Callable[[str], None]) -> bool:
-    """특정 댓글(comment_no)에 대댓글을 작성한다."""
+                      log: Callable[[str], None],
+                      dry_run: bool = False) -> bool:
+    """특정 댓글(comment_no)에 대댓글을 작성한다.
+    dry_run=True이면 요소 찾기/답글 버튼/입력 필드 검증만 하고 실제 등록은 스킵."""
     try:
-        # 해당 댓글의 답글 버튼 찾기
-        comments = await main_frame.query_selector_all("li.u_cbox_comment")
-        target_comment = None
-        for c in comments:
-            data_info = await c.get_attribute("data-info") or ""
-            if f"commentNo:'{comment_no}'" in data_info:
-                target_comment = c
-                break
+        target_comment = await _find_comment_element(main_frame, comment_no)
+
+        if not target_comment:
+            await random_sleep(1.0, 2.0)
+            target_comment = await _find_comment_element(main_frame, comment_no)
 
         if not target_comment:
             log(f"  댓글 #{comment_no} 요소 못 찾음")
@@ -191,7 +207,14 @@ async def write_reply(main_frame, comment_no: str, reply_text: str,
             log(f"  댓글 #{comment_no} 대댓글 입력 필드 못 찾음")
             return False
 
-        # 텍스트 입력 (JS innerText + 이벤트 dispatch)
+        if dry_run:
+            log(f"  [DRY-RUN] 댓글 #{comment_no} 검증 OK (요소/답글버튼/입력필드 모두 확인)")
+            reply_btn_again = await target_comment.query_selector(".u_cbox_btn_reply")
+            if reply_btn_again:
+                await reply_btn_again.evaluate("el => el.click()")
+                await random_sleep(0.5, 1.0)
+            return True
+
         await reply_input.evaluate('''(el, text) => {
             el.focus();
             el.innerText = text;
@@ -201,8 +224,6 @@ async def write_reply(main_frame, comment_no: str, reply_text: str,
         }''', reply_text)
         await random_sleep(0.8, 2.0)
 
-        # 등록 버튼 찾기 — 대댓글 영역의 등록 버튼
-        # reply_input의 가장 가까운 .u_cbox_write_box 안에 있는 등록 버튼
         register_btn = await main_frame.evaluate_handle('''(el) => {
             const writeBox = el.closest('.u_cbox_write_box');
             if (writeBox) {
@@ -213,7 +234,6 @@ async def write_reply(main_frame, comment_no: str, reply_text: str,
 
         btn_element = register_btn.as_element()
         if not btn_element:
-            # fallback: 페이지 전체에서 마지막 등록 버튼 (대댓글용)
             all_upload_btns = await main_frame.query_selector_all("button.u_cbox_btn_upload")
             if len(all_upload_btns) > 1:
                 btn_element = all_upload_btns[-1]

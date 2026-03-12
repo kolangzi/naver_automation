@@ -34,16 +34,16 @@ class ReplyBot(NaverBaseBot):
         seen_log_nos = set()
         page_num = 1
 
-        while self.is_running:
-            url = (
-                f"https://blog.naver.com/PostList.naver?"
-                f"blogId={blog_id}&categoryNo=0&from=postList&currentPage={page_num}"
-            )
-            self.log(f"PostList 페이지 {page_num} 접속...")
-            await self.page.goto(url)
-            await HumanDelay.page_load()
-            await random_sleep(2.0, 4.0)
+        url = (
+            f"https://blog.naver.com/PostList.naver?"
+            f"blogId={blog_id}&categoryNo=0&from=postList&currentPage=1"
+        )
+        self.log(f"PostList 페이지 {page_num} 접속...")
+        await self.page.goto(url)
+        await HumanDelay.page_load()
+        await random_sleep(2.0, 4.0)
 
+        while self.is_running:
             rows = await self.page.query_selector_all("table.blog2_categorylist tr")
             if not rows:
                 self.log("  글 목록 테이블 없음")
@@ -51,6 +51,7 @@ class ReplyBot(NaverBaseBot):
 
             found_old = False
             new_posts = 0
+            parsed_any = False
 
             for row in rows:
                 title_td = await row.query_selector("td.title")
@@ -65,7 +66,10 @@ class ReplyBot(NaverBaseBot):
                 parsed_date = self._parse_post_date(raw_date)
 
                 if not parsed_date:
+                    self.log(f"    날짜 파싱 실패: '{raw_date}' - skip")
                     continue
+
+                parsed_any = True
 
                 if parsed_date < cutoff_date:
                     found_old = True
@@ -100,20 +104,28 @@ class ReplyBot(NaverBaseBot):
                 self.log(f"기준일({cutoff_date})보다 오래된 글 발견 → 수집 종료")
                 break
 
+            if not parsed_any:
+                self.log("날짜 파싱 가능한 글 없음 → 수집 종료")
+                break
+
+            next_link = None
             next_links = await self.page.query_selector_all("div.blog2_paginate a._goPageTop")
-            next_page_found = False
             for nl in next_links:
                 nl_class = await nl.get_attribute("class") or ""
                 param_match = re.search(r"_param\((\d+)\)", nl_class)
                 if param_match and int(param_match.group(1)) == page_num + 1:
-                    next_page_found = True
+                    next_link = nl
                     break
 
-            if not next_page_found:
+            if not next_link:
                 self.log("마지막 페이지 도달")
                 break
 
             page_num += 1
+            self.log(f"PostList 페이지 {page_num} 접속...")
+            await next_link.evaluate("el => el.click()")
+            await HumanDelay.page_load()
+            await random_sleep(2.0, 4.0)
 
         return posts
 
@@ -155,7 +167,8 @@ class ReplyBot(NaverBaseBot):
                                          ai_generator: CommentGenerator,
                                          deferred: list,
                                          replied_set: set,
-                                         current_total: int = 0) -> tuple:
+                                         current_total: int = 0,
+                                         dry_run: bool = False) -> tuple:
         reply_count = 0
         skip_count = 0
 
@@ -213,25 +226,28 @@ class ReplyBot(NaverBaseBot):
                 skip_count += 1
                 continue
 
-            generated = await ai_generator.generate_reply(
-                post_content["title"], post_content["body"], comment_text
-            )
+            if dry_run:
+                generated = f"[DRY-RUN] {comment_text[:20]}"
+            else:
+                generated = await ai_generator.generate_reply(
+                    post_content["title"], post_content["body"], comment_text
+                )
 
-            if not generated:
-                self.log(f"    [{nick}] AI 대댓글 생성 실패 - 보류")
-                deferred.append({
-                    "comment_no": comment_no,
-                    "nick": nick,
-                    "comment_text": comment_text,
-                    "post_content": post_content,
-                    "log_no": log_no,
-                    "blog_id": my_blog_id,
-                })
-                continue
+                if not generated:
+                    self.log(f"    [{nick}] AI 대댓글 생성 실패 - 보류")
+                    deferred.append({
+                        "comment_no": comment_no,
+                        "nick": nick,
+                        "comment_text": comment_text,
+                        "post_content": post_content,
+                        "log_no": log_no,
+                        "blog_id": my_blog_id,
+                    })
+                    continue
 
             self.log(f"    [{nick}] AI 대댓글: '{generated}'")
 
-            result = await write_reply(main_frame, comment_no, generated, self.log)
+            result = await write_reply(main_frame, comment_no, generated, self.log, dry_run=dry_run)
             if result:
                 reply_count += 1
                 replied_set.add(comment_no)
@@ -245,10 +261,14 @@ class ReplyBot(NaverBaseBot):
     async def run_reply(self, user_id: str,
                         gemini_api_key: str, blog_id: str = "",
                         cutoff_date: str = "",
+                        dry_run: bool = False,
                         progress_callback: Callable[[int, int], None] = None):
         self.is_running = True
         ai_generator = CommentGenerator(gemini_api_key)
-        self.log("AI 대댓글 생성 모드 (Gemini)")
+        if dry_run:
+            self.log("AI 대댓글 DRY-RUN 모드 (실제 등록 없이 검증만)")
+        else:
+            self.log("AI 대댓글 생성 모드 (Gemini)")
 
         if not blog_id:
             blog_id = user_id
@@ -330,7 +350,8 @@ class ReplyBot(NaverBaseBot):
 
                     replies, skips = await self._process_comments_on_page(
                         main_frame, blog_id, content, log_no, ai_generator, all_deferred,
-                        replied_set=replied_set, current_total=total_replies
+                        replied_set=replied_set, current_total=total_replies,
+                        dry_run=dry_run
                     )
                     total_replies += replies
                     total_skips += skips
@@ -397,19 +418,22 @@ class ReplyBot(NaverBaseBot):
                         total_skips += 1
                         continue
 
-                    generated = await ai_generator.generate_reply(
-                        item["post_content"]["title"],
-                        item["post_content"]["body"],
-                        item["comment_text"],
-                    )
-                    if not generated:
-                        self.log(f"  AI 대댓글 재시도 실패 - skip")
-                        total_skips += 1
-                        continue
+                    if dry_run:
+                        generated = f"[DRY-RUN] {item['comment_text'][:20]}"
+                    else:
+                        generated = await ai_generator.generate_reply(
+                            item["post_content"]["title"],
+                            item["post_content"]["body"],
+                            item["comment_text"],
+                        )
+                        if not generated:
+                            self.log(f"  AI 대댓글 재시도 실패 - skip")
+                            total_skips += 1
+                            continue
 
                     self.log(f"  AI 대댓글: '{generated}'")
 
-                    result = await write_reply(main_frame, item["comment_no"], generated, self.log)
+                    result = await write_reply(main_frame, item["comment_no"], generated, self.log, dry_run=dry_run)
                     if result:
                         total_replies += 1
                     else:
