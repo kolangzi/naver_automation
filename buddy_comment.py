@@ -7,7 +7,7 @@ from blog_actions import (
     write_comment,
 )
 from comment_ai import CommentGenerator
-from utils import HumanDelay, random_sleep, maybe_idle, DAILY_ACTION_LIMIT, simulate_reading
+from utils import HumanDelay, random_sleep, maybe_idle, simulate_reading
 import asyncio
 import re
 from typing import Callable
@@ -228,10 +228,6 @@ class BuddyCommentBot(NaverBaseBot):
                     self.log("사용자에 의해 중단됨")
                     break
 
-                if comment_count >= DAILY_ACTION_LIMIT:
-                    self.log(f"\n일일 액션 제한({DAILY_ACTION_LIMIT}건) 도달 → 중단")
-                    break
-
                 target_id = buddy["blog_id"]
                 nick = buddy["nick"]
                 self.log(f"\n[{i+1}/{total}] {nick} ({target_id})")
@@ -294,7 +290,7 @@ class BuddyCommentBot(NaverBaseBot):
                 await HumanDelay.between_requests()
                 await maybe_idle(self.log)
 
-            if deferred and self.is_running and comment_count < DAILY_ACTION_LIMIT:
+            if deferred and self.is_running:
                 self.log(f"\n{'=' * 50}")
                 self.log(f"보류 목록 재시도: {len(deferred)}건")
                 self.log("=" * 50)
@@ -302,10 +298,6 @@ class BuddyCommentBot(NaverBaseBot):
                 for i, buddy in enumerate(deferred):
                     if not self.is_running:
                         self.log("사용자에 의해 중단됨")
-                        break
-
-                    if comment_count >= DAILY_ACTION_LIMIT:
-                        self.log(f"\n일일 액션 제한({DAILY_ACTION_LIMIT}건) 도달 → 중단")
                         break
 
                     target_id = buddy["blog_id"]
