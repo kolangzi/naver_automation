@@ -16,7 +16,7 @@
 | `reply_bot.py` | `ReplyBot` — 기능3: 내 블로그 글의 댓글에 AI 대댓글 작성. PostList에서 글 수집 후 댓글 페이지네이션 처리. dry-run 모드 지원 |
 | `blog_actions.py` | 블로그 DOM 조작 함수 모음: 공감 클릭, 최신글 logNo 추출, 글 내용 파싱, 댓글 존재 확인, 댓글/대댓글 작성 |
 | `comment_ai.py` | `CommentGenerator` — Gemini 2.5 Flash API로 댓글/대댓글 생성. Rate limit 보호, 재시도 로직, 30대 여성 블로거 페르소나 프롬프트 |
-| `utils.py` | `HumanDelay`, `random_sleep`, `maybe_idle`, `simulate_reading` — 자동화 탐지 회피용 인간적 딜레이 유틸리티 |
+| `utils.py` | `HumanDelay`, `random_sleep`, `maybe_idle`, `simulate_reading`, `DAILY_ACTION_LIMIT` — 자동화 탐지 회피용 인간적 딜레이 및 일일 액션 제한 유틸리티 |
 | `requirements.txt` | 의존성: playwright, customtkinter, google-genai, playwright-stealth |
 | `install.sh` | 설치 스크립트 |
 | `run.sh` | 실행 스크립트 |
@@ -52,6 +52,7 @@ main.py (GUI - CustomTkinter)
 ### Common Patterns
 - **2-Phase 패턴**: Phase 1에서 대상 수집, Phase 2에서 액션 실행 (buddy_comment, reply_bot)
 - **보류(deferred) 재시도**: AI 생성 실패 시 보류 목록에 추가 후 마지막에 재시도
+- **일일 액션 제한**: `DAILY_ACTION_LIMIT=50` — 계정당 실행 당 댓글/대댓글 최대 수. 안티봇 탐지 회피 목적. 제거 시 계정 잠금 위험
 - **Human-like delay**: `HumanDelay`, `random_sleep`, `maybe_idle`로 탐지 회피
 - **iframe 탐색**: 네이버 블로그는 iframe 구조 — `_get_main_frame()` (PostView), `_get_papermain_frame()` (관리페이지)
 - **persistent context**: `~/.naver_automation/profiles/{user_id}`에 브라우저 프로필 저장하여 로그인 세션 유지

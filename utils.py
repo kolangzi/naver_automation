@@ -34,6 +34,9 @@ async def maybe_idle(log=None):
         await asyncio.sleep(wait)
 
 
+DAILY_ACTION_LIMIT = 50  # 계정당 일일 액션(댓글/대댓글) 최대 수
+
+
 async def simulate_reading(body_length: int = 0, log=None):
     if body_length > 1000:
         wait = random.uniform(8.0, 15.0)
