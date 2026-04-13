@@ -15,6 +15,27 @@ _USER_AGENTS = [
 ]
 
 
+def _get_or_create_user_agent(profile_dir: str) -> str:
+    """프로필 디렉토리의 ua.txt에서 UA를 읽거나, 없으면 랜덤 선택 후 저장.
+    같은 프로필(쿠키·localStorage)은 항상 같은 UA를 사용해야 지문 불일치로 탐지되지 않음."""
+    ua_path = os.path.join(profile_dir, "ua.txt")
+    if os.path.exists(ua_path):
+        try:
+            with open(ua_path, "r", encoding="utf-8") as f:
+                saved = f.read().strip()
+            if saved:
+                return saved
+        except OSError:
+            pass
+    ua = random.choice(_USER_AGENTS)
+    try:
+        with open(ua_path, "w", encoding="utf-8") as f:
+            f.write(ua)
+    except OSError:
+        pass
+    return ua
+
+
 class NaverBaseBot:
     def __init__(self, log_callback: Callable[[str], None] = print):
         self.context: Optional[BrowserContext] = None
@@ -22,6 +43,20 @@ class NaverBaseBot:
         self.playwright = None
         self.log = log_callback
         self.is_running = False
+        self._stealth: Optional[Stealth] = None
+
+    async def _apply_stealth_to_page(self, page: Page):
+        """새로 열리는 모든 페이지(팝업 포함)에 stealth 적용."""
+        if self._stealth is None:
+            return
+        try:
+            await self._stealth.apply_stealth_async(page)
+        except Exception as e:
+            self.log(f"  [stealth] 팝업 stealth 적용 실패: {str(e)[:80]}")
+
+    def _on_new_page(self, page: Page):
+        """context.on('page') 동기 콜백. 비동기 stealth 적용을 태스크로 예약."""
+        asyncio.create_task(self._apply_stealth_to_page(page))
 
     async def start_browser(self, user_id: str = "default"):
         profile_dir = os.path.join(
@@ -30,7 +65,7 @@ class NaverBaseBot:
         os.makedirs(profile_dir, exist_ok=True)
 
         self.playwright = await async_playwright().start()
-        user_agent = random.choice(_USER_AGENTS)
+        user_agent = _get_or_create_user_agent(profile_dir)
         self.context = await self.playwright.chromium.launch_persistent_context(
             user_data_dir=profile_dir,
             headless=False,
@@ -43,10 +78,13 @@ class NaverBaseBot:
             locale='ko-KR',
             timezone_id='Asia/Seoul',
         )
-        self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
 
-        stealth = Stealth()
-        await stealth.apply_stealth_async(self.page)
+        self._stealth = Stealth()
+        # 팝업(context.expect_page로 여는 서로이웃 신청창 등)에도 stealth 자동 적용
+        self.context.on("page", self._on_new_page)
+
+        self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
+        await self._apply_stealth_to_page(self.page)
 
         self.log(f"브라우저 시작됨 (프로필: {user_id})")
         self.log("⚠️  주의: 실행 중 Cmd+W / Ctrl+W를 누르지 마세요. 브라우저가 종료됩니다.")
