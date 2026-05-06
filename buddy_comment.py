@@ -281,12 +281,6 @@ class BuddyCommentBot(NaverBaseBot):
                 await main_frame.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                 await random_sleep(1.5, 3.0)
 
-                # 100% 공감 패턴은 봇 시그널이므로 75% 확률로만 누름
-                if should_engage(0.75):
-                    await click_sympathy_on_frame(main_frame, self.log)
-                else:
-                    self.log("  공감 패스 (자연스러운 변동)")
-
                 already = await check_my_comment_exists(main_frame, blog_id)
                 if already:
                     self.log(f"  [{target_id}] 이미 내 댓글 존재 - skip")
@@ -319,6 +313,12 @@ class BuddyCommentBot(NaverBaseBot):
                     comment_count += 1
                     today_total = increment_daily_count(user_id)
                     self.log(f"  (오늘 누적 {today_total}/{DAILY_ACTION_LIMIT})")
+                    # 댓글이 실제로 등록된 경우에만 공감 — 75% 확률
+                    # ("공감만 누르고 댓글 없는" 케이스 원천 차단)
+                    if should_engage(0.75):
+                        await click_sympathy_on_frame(main_frame, self.log)
+                    else:
+                        self.log("  공감 패스 (자연스러운 변동)")
                 else:
                     skip_count += 1
 
@@ -392,6 +392,11 @@ class BuddyCommentBot(NaverBaseBot):
                         comment_count += 1
                         today_total = increment_daily_count(user_id)
                         self.log(f"  (오늘 누적 {today_total}/{DAILY_ACTION_LIMIT})")
+                        # 댓글 성공 시에만 공감 (메인 루프와 동일 정책)
+                        if should_engage(0.75):
+                            await click_sympathy_on_frame(main_frame, self.log)
+                        else:
+                            self.log("  공감 패스 (자연스러운 변동)")
                     else:
                         skip_count += 1
 
