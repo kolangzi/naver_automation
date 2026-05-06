@@ -178,16 +178,14 @@ rm ~/.naver_automation/profiles/<user_id>/ua.txt
 
 ---
 
-## 새 PC 작업 재개 절차
+## 새 대화에서 작업 재개 절차
 
-1. repo clone + 브랜치 체크아웃
+1. 작업 디렉토리에서 브랜치 체크아웃
    ```bash
-   git clone <repo-url> ~/Works/neighbor/naver_automation
-   cd ~/Works/neighbor/naver_automation
    git fetch origin
    git checkout feat/anti-bot-detection-hardening   # push된 후
    ```
-2. venv 재설정
+2. venv 재설정 (필요 시)
    ```bash
    ./install.sh   # 또는
    python3 -m venv venv && ./venv/bin/pip install -r requirements.txt
