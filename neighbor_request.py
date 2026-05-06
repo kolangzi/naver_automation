@@ -1,5 +1,13 @@
 from base_bot import NaverBaseBot
-from utils import HumanDelay, random_sleep, maybe_idle
+from utils import (
+    HumanDelay,
+    random_sleep,
+    maybe_idle,
+    DAILY_ACTION_LIMIT,
+    daily_limit_reached,
+    increment_daily_count,
+    load_daily_count,
+)
 import asyncio
 import re
 from typing import Callable, List
@@ -282,9 +290,20 @@ class NeighborRequestBot(NaverBaseBot):
             page_depth = 0
             total_attempted = 0
 
-            self.log(f"서로이웃 신청 시작 (최대 {max_success}명)")
+            today_used = load_daily_count(user_id)
+            self.log(
+                f"서로이웃 신청 시작 (per-run 최대 {max_success}명 / "
+                f"일일 한도 {DAILY_ACTION_LIMIT} - 오늘 누적 {today_used})"
+            )
+            if daily_limit_reached(user_id):
+                self.log(f"일일 한도({DAILY_ACTION_LIMIT}) 이미 도달 - 종료")
+                return
 
             while success_count < max_success and self.is_running:
+                if daily_limit_reached(user_id):
+                    self.log(f"일일 한도({DAILY_ACTION_LIMIT}) 도달 - 신청 종료")
+                    break
+
                 accounts = await self._get_available_accounts()
                 new_accounts = [a for a in accounts if a['user_id'] not in attempted_ids]
 
@@ -302,6 +321,9 @@ class NeighborRequestBot(NaverBaseBot):
                     if success_count >= max_success:
                         self.log(f"최대 성공 수 {max_success}명 도달 - 신청 종료")
                         break
+                    if daily_limit_reached(user_id):
+                        self.log(f"일일 한도({DAILY_ACTION_LIMIT}) 도달 - 신청 종료")
+                        break
                     if not self.is_running:
                         self.log("사용자에 의해 중단됨")
                         break
@@ -313,6 +335,8 @@ class NeighborRequestBot(NaverBaseBot):
 
                     if await self.request_neighbor(account, neighbor_message):
                         success_count += 1
+                        today_total = increment_daily_count(user_id)
+                        self.log(f"  (오늘 누적 {today_total}/{DAILY_ACTION_LIMIT})")
 
                     if progress_callback:
                         progress_callback(success_count, max_success)
@@ -326,7 +350,7 @@ class NeighborRequestBot(NaverBaseBot):
                         self.log(f"페이지 depth 복원 불완전 ({restored}/{page_depth}), 현재 depth로 조정")
                         page_depth = restored
 
-                if not self.is_running or success_count >= max_success:
+                if not self.is_running or success_count >= max_success or daily_limit_reached(user_id):
                     break
 
                 if not await self._load_next_page():

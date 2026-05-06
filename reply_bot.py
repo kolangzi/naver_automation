@@ -1,7 +1,15 @@
 from base_bot import NaverBaseBot
 from blog_actions import get_post_content, load_comments, write_reply
 from comment_ai import CommentGenerator
-from utils import HumanDelay, random_sleep, maybe_idle, DAILY_ACTION_LIMIT
+from utils import (
+    HumanDelay,
+    random_sleep,
+    maybe_idle,
+    DAILY_ACTION_LIMIT,
+    daily_limit_reached,
+    increment_daily_count,
+    load_daily_count,
+)
 import re
 from datetime import date, timedelta
 from typing import Callable, List, Optional
@@ -167,7 +175,7 @@ class ReplyBot(NaverBaseBot):
                                          ai_generator: CommentGenerator,
                                          deferred: list,
                                          replied_set: set,
-                                         current_total: int = 0,
+                                         user_id: str = "",
                                          dry_run: bool = False) -> tuple:
         reply_count = 0
         skip_count = 0
@@ -201,8 +209,8 @@ class ReplyBot(NaverBaseBot):
             if not self.is_running:
                 break
 
-            if (current_total + reply_count) >= DAILY_ACTION_LIMIT:
-                self.log(f"    일일 액션 제한({DAILY_ACTION_LIMIT}건) 도달 → 중단")
+            if user_id and daily_limit_reached(user_id):
+                self.log(f"    일일 한도({DAILY_ACTION_LIMIT}건) 도달 → 중단")
                 break
 
             comment_no = entry["comment_no"]
@@ -251,6 +259,10 @@ class ReplyBot(NaverBaseBot):
             if result:
                 reply_count += 1
                 replied_set.add(comment_no)
+                # dry_run은 실제 등록이 없으므로 일일 카운터에 반영하지 않음
+                if user_id and not dry_run:
+                    today_total = increment_daily_count(user_id)
+                    self.log(f"    (오늘 누적 {today_total}/{DAILY_ACTION_LIMIT})")
             else:
                 skip_count += 1
 
@@ -302,13 +314,23 @@ class ReplyBot(NaverBaseBot):
             all_deferred = []
             replied_set = set()
 
+            today_used = load_daily_count(user_id)
+            self.log(
+                f"오늘 누적 액션 {today_used}/{DAILY_ACTION_LIMIT} "
+                f"(댓글·대댓글·이웃신청 합산)"
+            )
+            # dry_run은 실제 등록이 없으므로 한도 체크 자체를 우회 (검증만 하기 위함)
+            if not dry_run and daily_limit_reached(user_id):
+                self.log(f"일일 한도({DAILY_ACTION_LIMIT}) 이미 도달 → 종료")
+                return
+
             for i, post in enumerate(posts):
                 if not self.is_running:
                     self.log("사용자에 의해 중단됨")
                     break
 
-                if total_replies >= DAILY_ACTION_LIMIT:
-                    self.log(f"\n일일 액션 제한({DAILY_ACTION_LIMIT}건) 도달 → 중단")
+                if not dry_run and daily_limit_reached(user_id):
+                    self.log(f"\n일일 한도({DAILY_ACTION_LIMIT}건) 도달 → 중단")
                     break
 
                 log_no = post["log_no"]
@@ -350,7 +372,7 @@ class ReplyBot(NaverBaseBot):
 
                     replies, skips = await self._process_comments_on_page(
                         main_frame, blog_id, content, log_no, ai_generator, all_deferred,
-                        replied_set=replied_set, current_total=total_replies,
+                        replied_set=replied_set, user_id=user_id,
                         dry_run=dry_run
                     )
                     total_replies += replies
@@ -370,7 +392,10 @@ class ReplyBot(NaverBaseBot):
                 await maybe_idle(self.log)
 
             # 보류 목록 재시도
-            if all_deferred and self.is_running and total_replies < DAILY_ACTION_LIMIT:
+            deferred_ok = all_deferred and self.is_running and (
+                dry_run or not daily_limit_reached(user_id)
+            )
+            if deferred_ok:
                 self.log(f"\n{'=' * 50}")
                 self.log(f"보류 목록 재시도: {len(all_deferred)}건")
                 self.log("=" * 50)
@@ -379,8 +404,8 @@ class ReplyBot(NaverBaseBot):
                     if not self.is_running:
                         break
 
-                    if total_replies >= DAILY_ACTION_LIMIT:
-                        self.log(f"\n일일 액션 제한({DAILY_ACTION_LIMIT}건) 도달 → 중단")
+                    if not dry_run and daily_limit_reached(user_id):
+                        self.log(f"\n일일 한도({DAILY_ACTION_LIMIT}건) 도달 → 중단")
                         break
 
                     self.log(f"\n[보류 {i+1}/{len(all_deferred)}] {item['nick']} (댓글#{item['comment_no']})")
@@ -436,6 +461,9 @@ class ReplyBot(NaverBaseBot):
                     result = await write_reply(main_frame, item["comment_no"], generated, self.log, dry_run=dry_run)
                     if result:
                         total_replies += 1
+                        if not dry_run:
+                            today_total = increment_daily_count(user_id)
+                            self.log(f"  (오늘 누적 {today_total}/{DAILY_ACTION_LIMIT})")
                     else:
                         total_skips += 1
 

@@ -7,7 +7,17 @@ from blog_actions import (
     write_comment,
 )
 from comment_ai import CommentGenerator
-from utils import HumanDelay, random_sleep, maybe_idle, DAILY_ACTION_LIMIT, simulate_reading
+from utils import (
+    HumanDelay,
+    random_sleep,
+    maybe_idle,
+    DAILY_ACTION_LIMIT,
+    simulate_reading,
+    daily_limit_reached,
+    increment_daily_count,
+    load_daily_count,
+    should_engage,
+)
 import asyncio
 import re
 from typing import Callable
@@ -223,13 +233,22 @@ class BuddyCommentBot(NaverBaseBot):
             skip_count = 0
             deferred = []
 
+            today_used = load_daily_count(user_id)
+            self.log(
+                f"오늘 누적 액션 {today_used}/{DAILY_ACTION_LIMIT} "
+                f"(댓글·대댓글·이웃신청 합산)"
+            )
+            if daily_limit_reached(user_id):
+                self.log(f"일일 한도({DAILY_ACTION_LIMIT}) 이미 도달 → 종료")
+                return
+
             for i, buddy in enumerate(all_targets):
                 if not self.is_running:
                     self.log("사용자에 의해 중단됨")
                     break
 
-                if comment_count >= DAILY_ACTION_LIMIT:
-                    self.log(f"\n일일 액션 제한({DAILY_ACTION_LIMIT}건) 도달 → 중단")
+                if daily_limit_reached(user_id):
+                    self.log(f"\n일일 한도({DAILY_ACTION_LIMIT}건) 도달 → 중단")
                     break
 
                 target_id = buddy["blog_id"]
@@ -262,11 +281,21 @@ class BuddyCommentBot(NaverBaseBot):
                 await main_frame.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                 await random_sleep(1.5, 3.0)
 
-                await click_sympathy_on_frame(main_frame, self.log)
+                # 100% 공감 패턴은 봇 시그널이므로 75% 확률로만 누름
+                if should_engage(0.75):
+                    await click_sympathy_on_frame(main_frame, self.log)
+                else:
+                    self.log("  공감 패스 (자연스러운 변동)")
 
                 already = await check_my_comment_exists(main_frame, blog_id)
                 if already:
                     self.log(f"  [{target_id}] 이미 내 댓글 존재 - skip")
+                    skip_count += 1
+                    continue
+
+                # 사람은 방문한 모든 글에 댓글을 남기지 않음 — 85% 확률만 진행
+                if not should_engage(0.85):
+                    self.log(f"  [{target_id}] 그냥 읽고 지나감 - skip")
                     skip_count += 1
                     continue
 
@@ -288,13 +317,15 @@ class BuddyCommentBot(NaverBaseBot):
                 result = await write_comment(main_frame, target_id, comment, self.log)
                 if result:
                     comment_count += 1
+                    today_total = increment_daily_count(user_id)
+                    self.log(f"  (오늘 누적 {today_total}/{DAILY_ACTION_LIMIT})")
                 else:
                     skip_count += 1
 
                 await HumanDelay.between_requests()
                 await maybe_idle(self.log)
 
-            if deferred and self.is_running and comment_count < DAILY_ACTION_LIMIT:
+            if deferred and self.is_running and not daily_limit_reached(user_id):
                 self.log(f"\n{'=' * 50}")
                 self.log(f"보류 목록 재시도: {len(deferred)}건")
                 self.log("=" * 50)
@@ -304,8 +335,8 @@ class BuddyCommentBot(NaverBaseBot):
                         self.log("사용자에 의해 중단됨")
                         break
 
-                    if comment_count >= DAILY_ACTION_LIMIT:
-                        self.log(f"\n일일 액션 제한({DAILY_ACTION_LIMIT}건) 도달 → 중단")
+                    if daily_limit_reached(user_id):
+                        self.log(f"\n일일 한도({DAILY_ACTION_LIMIT}건) 도달 → 중단")
                         break
 
                     target_id = buddy["blog_id"]
@@ -359,6 +390,8 @@ class BuddyCommentBot(NaverBaseBot):
                     result = await write_comment(main_frame, target_id, comment, self.log)
                     if result:
                         comment_count += 1
+                        today_total = increment_daily_count(user_id)
+                        self.log(f"  (오늘 누적 {today_total}/{DAILY_ACTION_LIMIT})")
                     else:
                         skip_count += 1
 
