@@ -96,11 +96,48 @@ class NaverBaseBot:
             await self.playwright.stop()
         self.log("브라우저 종료됨")
 
+    async def _auth_cookie_snapshot(self) -> Optional[tuple]:
+        """네이버 인증 쿠키(NID_AUT/NID_SES) 값의 스냅샷. 둘 다 없으면 None.
+        DOM 클래스명은 네이버 배포마다 해시가 바뀌므로 쿠키를 1차 신호로 사용한다."""
+        try:
+            cookies = await self.context.cookies('https://www.naver.com')
+        except Exception:
+            return None
+        values = {c['name']: c.get('value') for c in cookies if c.get('value')}
+        if 'NID_AUT' in values and 'NID_SES' in values:
+            return (values['NID_AUT'], values['NID_SES'])
+        return None
+
+    async def _has_login_cookies(self) -> bool:
+        return await self._auth_cookie_snapshot() is not None
+
     async def check_login_status(self) -> bool:
+        """네이버 메인에서 로그인 여부를 판별한다.
+
+        단일 해시 클래스에 의존하면 네이버가 배포할 때마다 오탐(항상 '로그인됨')이
+        발생하므로, 로그인 영역(#account)의 로그인/로그아웃 링크와 인증 쿠키를
+        교차 확인한다."""
         await self.page.goto('https://www.naver.com')
         await HumanDelay.page_load()
-        login_btn = await self.page.query_selector('a.MyView-module__link_login___HpHMW')
-        return login_btn is None
+
+        has_cookie = await self._has_login_cookies()
+
+        # #account = 네이버 메인 우측 로그인 영역. 로그인 시 로그아웃 링크로 바뀐다.
+        logout_link = await self.page.query_selector(
+            '#account a[href*="nidlogin.logout"], a[href*="nid.naver.com/nidlogin.logout"]'
+        )
+        if logout_link:
+            return True
+
+        login_link = await self.page.query_selector(
+            '#account a[href*="nidlogin.login"], #account a[class*="link_login"]'
+        )
+        if login_link:
+            # 쿠키가 남아 있어도 로그인 버튼이 보이면 세션이 만료된 것
+            return False
+
+        # 로그인 영역 마크업이 또 바뀐 경우: 쿠키만으로 판단
+        return has_cookie
 
     async def ensure_login(self, user_id: str):
         if await self.check_login_status():
@@ -108,29 +145,39 @@ class NaverBaseBot:
             return
 
         self.log("로그인이 필요합니다. 브라우저에서 직접 로그인해주세요.")
-        await self.page.goto('https://nid.naver.com/nidlogin.login')
+        await self.page.goto(
+            'https://nid.naver.com/nidlogin.login?mode=form&url=https%3A%2F%2Fwww.naver.com%2F'
+        )
         await HumanDelay.page_load()
 
         id_input = await self.page.query_selector('#id')
         if id_input:
             await id_input.evaluate('(el, uid) => { el.value = uid; el.dispatchEvent(new Event("input", {bubbles:true})); }', user_id)
             self.log(f"아이디 자동 입력됨: {user_id}")
+        else:
+            self.log("아이디 입력란을 찾지 못했습니다. 직접 입력해주세요.")
         self.log("비밀번호를 입력하고 3분 이내에 로그인을 완료해주세요.")
+        self.log("(2단계 인증·새 기기 등록 화면이 나오면 그대로 진행하세요)")
 
+        # 만료된 인증 쿠키가 프로필에 남아 있을 수 있으므로 진입 시점 값을 기준으로 삼고,
+        # 값이 새로 발급되어 달라졌을 때만 로그인 성공으로 본다.
+        before = await self._auth_cookie_snapshot()
+
+        # 대기 중에는 페이지를 이동시키지 않는다.
+        # 2단계 인증/기기 등록 진행 화면을 강제 이동시키면 로그인 흐름이 깨진다.
         max_wait = 180
-        poll_interval = 5
+        poll_interval = 3
         elapsed = 0
         while elapsed < max_wait:
             await asyncio.sleep(poll_interval)
             elapsed += poll_interval
-            current_url = self.page.url
-            if 'nidlogin.login' not in current_url:
-                if await self.check_login_status():
-                    self.log("로그인 성공!")
-                    return
-                else:
-                    await self.page.goto('https://nid.naver.com/nidlogin.login')
-                    await HumanDelay.page_load()
+
+            current = await self._auth_cookie_snapshot()
+            if current is not None and current != before:
+                self.log("로그인 성공!")
+                await HumanDelay.page_load()
+                return
+
             remaining = max_wait - elapsed
             if remaining > 0 and elapsed % 15 == 0:
                 self.log(f"로그인 대기 중... (남은 시간: {remaining}초)")
