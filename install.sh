@@ -28,6 +28,29 @@ else
     exit 1
 fi
 
+# 1-1. tkinter 확인 (Homebrew Python은 tkinter가 별도 패키지)
+if ! python3 -c "import tkinter" &> /dev/null; then
+    echo -e "${YELLOW}! tkinter가 없습니다. 설치를 시도합니다...${NC}"
+    PY_MINOR=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+    if command -v brew &> /dev/null; then
+        brew install "python-tk@${PY_MINOR}"
+    fi
+    if ! python3 -c "import tkinter" &> /dev/null; then
+        echo -e "${RED}✗ tkinter를 사용할 수 없습니다.${NC}"
+        echo ""
+        echo "해결 방법:"
+        echo "  brew install python-tk@${PY_MINOR}"
+        echo "  또는 https://www.python.org/downloads/ 의 공식 설치본 사용"
+        exit 1
+    fi
+    # tkinter 설치 과정에서 Python이 업그레이드되면 기존 venv가 깨질 수 있음
+    if [ -d "venv" ] && ! venv/bin/python -c "import tkinter" &> /dev/null; then
+        echo -e "${YELLOW}! 기존 가상환경이 무효화되어 재생성합니다.${NC}"
+        rm -rf venv
+    fi
+fi
+echo -e "${GREEN}✓ tkinter 확인 완료${NC}"
+
 # 2. 가상환경 생성
 echo ""
 echo -e "${YELLOW}[2/4] 가상환경 설정 중...${NC}"
